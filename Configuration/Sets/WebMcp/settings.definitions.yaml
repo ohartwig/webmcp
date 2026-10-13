@@ -1,0 +1,210 @@
+categories:
+  webmcp:
+    label: 'WebMCP'
+  webmcp.general:
+    label: 'General'
+    parent: webmcp
+  webmcp.bridge:
+    label: 'Bridge Widget'
+    parent: webmcp
+  webmcp.tools:
+    label: 'Tools'
+    parent: webmcp
+  webmcp.consent:
+    label: 'Consent'
+    parent: webmcp
+
+settings:
+  webmcp.enabled:
+    label: 'Enable WebMCP'
+    description: 'Enable or disable the WebMCP integration for this site'
+    type: bool
+    default: true
+    category: webmcp.general
+
+  webmcp.ard.representativeQueries:
+    label: 'ARD Representative Queries'
+    description: 'Two to five natural-language questions a person would actually ask this site, one per line. They are published in /.well-known/ard.json and decide how the site ranks in agent registries. Left empty the field is omitted entirely — a generated example describes the shape of the site rather than a real question, and ranks worse than nothing.'
+    type: string
+    default: ''
+    category: webmcp.general
+
+  webmcp.apiBasePath:
+    label: 'API Base Path'
+    description: 'Base path for the WebMCP API endpoints'
+    type: string
+    default: '/_webmcp/api'
+    category: webmcp.general
+
+  webmcp.originTrialToken:
+    label: 'Origin Trial Token'
+    description: 'Chrome Origin Trial token for the WebMCP API (Chrome 149-156). Without a token document.modelContext is undefined and only the bridge widget works. Rendered as a meta http-equiv="origin-trial" tag.'
+    type: string
+    default: ''
+    category: webmcp.general
+
+  webmcp.debug:
+    label: 'Debug Logging'
+    description: 'Log WebMCP tool registration failures to the browser console. Keep disabled in production.'
+    type: bool
+    default: false
+    category: webmcp.general
+
+  webmcp.consent.provider:
+    label: 'Consent Provider'
+    description: 'Which consent management provider to use (native, klaro, cookiebot)'
+    type: string
+    default: 'native'
+    category: webmcp.consent
+
+  # Bridge Widget
+  webmcp.bridge.enabled:
+    label: 'Enable WebMCP Bridge Widget'
+    description: 'Load the WebMCP bridge widget so external AI clients (Claude Desktop, Cursor) can connect to the registered tools via WebSocket'
+    type: bool
+    default: true
+    category: webmcp.bridge
+
+  webmcp.bridge.widget.visibility:
+    label: 'Bridge Widget Visibility'
+    description: 'When the connection widget is shown. "always" paints the trigger for every visitor; "optin" keeps the bridge loaded and connectable but hides the trigger until ?webmcp is in the URL or window.webmcp.showWidget() is called — for customer sites that must not show a developer affordance.'
+    type: string
+    default: 'always'
+    category: webmcp.bridge
+
+  webmcp.bridge.widget.color:
+    label: 'Bridge Widget Color'
+    description: 'CSS color for the WebMCP connection widget button'
+    type: string
+    default: '#007bff'
+    category: webmcp.bridge
+
+  webmcp.bridge.widget.position:
+    label: 'Bridge Widget Position'
+    description: 'Corner position of the widget (bottom-right, bottom-left, top-right, top-left)'
+    type: string
+    default: 'bottom-right'
+    category: webmcp.bridge
+
+  webmcp.bridge.widget.size:
+    label: 'Bridge Widget Size'
+    description: 'CSS size for the widget button'
+    type: string
+    default: '30px'
+    category: webmcp.bridge
+
+  webmcp.bridge.widget.padding:
+    label: 'Bridge Widget Padding'
+    description: 'CSS padding from the screen edge'
+    type: string
+    default: '20px'
+    category: webmcp.bridge
+
+  # Search Tool
+  webmcp.tools.search.enabled:
+    label: 'Enable Search Tool'
+    description: 'Enable or disable the search tool'
+    type: bool
+    default: true
+    category: webmcp.tools
+
+  webmcp.tools.search.maxResults:
+    label: 'Search Max Results'
+    description: 'Maximum number of search results returned'
+    type: int
+    default: 20
+    category: webmcp.tools
+
+  webmcp.tools.search.consent.required:
+    label: 'Search: Require Consent'
+    description: 'Whether the search tool requires user consent before activation'
+    type: bool
+    default: false
+    category: webmcp.consent
+
+  webmcp.tools.search.consent.category:
+    label: 'Search: Consent Category'
+    description: 'Consent category for the search tool (e.g. functional, analytics)'
+    type: string
+    default: 'functional'
+    category: webmcp.consent
+
+  # Navigation Tool
+  webmcp.tools.navigation.enabled:
+    label: 'Enable Navigation Tool'
+    description: 'Enable or disable the navigation tool'
+    type: bool
+    default: true
+    category: webmcp.tools
+
+  webmcp.tools.navigation.maxDepth:
+    label: 'Navigation Max Depth'
+    description: 'Maximum depth of the navigation tree'
+    type: int
+    default: 4
+    category: webmcp.tools
+
+  webmcp.tools.navigation.consent.required:
+    label: 'Navigation: Require Consent'
+    description: 'Whether the navigation tool requires user consent before activation'
+    type: bool
+    default: false
+    category: webmcp.consent
+
+  webmcp.tools.navigation.consent.category:
+    label: 'Navigation: Consent Category'
+    description: 'Consent category for the navigation tool'
+    type: string
+    default: 'functional'
+    category: webmcp.consent
+
+  # Page Content Tool
+  webmcp.tools.page-content.enabled:
+    label: 'Enable Page Content Tool'
+    description: 'Enable or disable the page content tool'
+    type: bool
+    default: true
+    category: webmcp.tools
+
+  webmcp.tools.page-content.consent.required:
+    label: 'Page Content: Require Consent'
+    description: 'Whether the page content tool requires user consent before activation'
+    type: bool
+    default: false
+    category: webmcp.consent
+
+  webmcp.tools.page-content.consent.category:
+    label: 'Page Content: Consent Category'
+    description: 'Consent category for the page content tool'
+    type: string
+    default: 'functional'
+    category: webmcp.consent
+
+  # Form Tool
+  webmcp.tools.form.enabled:
+    label: 'Enable Form Tool'
+    description: 'Enable or disable the form tool (requires EXT:form). Disabled by default because forms are write operations.'
+    type: bool
+    default: false
+    category: webmcp.tools
+
+  webmcp.tools.form.allowedForms:
+    label: 'Allowed Form Identifiers'
+    description: 'Comma-separated list of form identifiers that may be submitted via WebMCP. Empty means all forms are allowed.'
+    type: string
+    default: ''
+    category: webmcp.tools
+
+  webmcp.tools.form.consent.required:
+    label: 'Form: Require Consent'
+    description: 'Whether the form tool requires user consent before activation'
+    type: bool
+    default: false
+    category: webmcp.consent
+
+  webmcp.tools.form.consent.category:
+    label: 'Form: Consent Category'
+    description: 'Consent category for the form tool'
+    type: string
+    default: 'functional'
+    category: webmcp.consent

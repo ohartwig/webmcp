@@ -1,0 +1,16 @@
+{
+  "name": "webmcp",
+  "private": true,
+  "scripts": {
+    "build:js": "esbuild Resources/Private/JavaScript/webmcp.js --minify --outfile=Resources/Public/JavaScript/webmcp.js --target=es2020 && esbuild Resources/Private/JavaScript/webmcp-init.js --minify --outfile=Resources/Public/JavaScript/webmcp-init.js --target=es2020",
+    "build": "npm run build:js",
+    "lint:eslint": "eslint .",
+    "lint:eslint.report.junit": "mkdir -p reports && eslint . -f junit -o reports/eslintreport.junit.xml"
+  },
+  "devDependencies": {
+    "@moselwal/eslint-config": "1.1.1",
+    "esbuild": "0.28.2",
+    "eslint": "^10.11.0",
+    "eslint-formatter-junit": "9.0.1"
+  }
+}

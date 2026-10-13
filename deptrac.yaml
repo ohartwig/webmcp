@@ -1,0 +1,47 @@
+parameters:
+  paths:
+    - Classes
+  layers:
+    - name: Domain
+      collectors:
+        - type: directory
+          value: 'Classes/Domain/.*'
+    - name: Application
+      collectors:
+        - type: directory
+          value: 'Classes/Application/.*'
+    - name: Infrastructure
+      collectors:
+        - type: directory
+          value: 'Classes/Infrastructure/.*'
+    - name: Presentation
+      collectors:
+        - type: directory
+          value: 'Classes/Presentation/.*'
+    - name: Framework
+      collectors:
+        - type: classLike
+          value: 'TYPO3\\CMS\\.*'
+        - type: classLike
+          value: 'Psr\\.*'
+        - type: classLike
+          value: 'Doctrine\\DBAL\\.*'
+        - type: classLike
+          value: 'Symfony\\Component\\.*'
+
+  ruleset:
+    Domain: []
+    Application:
+      - Domain
+    Infrastructure:
+      - Application
+      - Domain
+      - Framework
+    Presentation:
+      - Application
+      - Domain
+      - Framework
+    Framework: []
+
+  report_uncovered: true
+  fail_on_uncovered: true

@@ -1,0 +1,70 @@
+<html xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers"
+      xmlns:be="http://typo3.org/ns/TYPO3/CMS/Backend/ViewHelpers"
+      data-namespace-typo3-fluid="true">
+
+<f:layout name="Backend" />
+
+<f:section name="Content">
+
+    <h1><f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:consent.title" /></h1>
+
+    <div class="btn-group mb-3">
+        <a href="{f:be.uri(route: 'content_webmcp')}" class="btn btn-default btn-sm">
+            <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:nav.overview" />
+        </a>
+        <a href="{f:be.uri(route: 'content_webmcp.log')}" class="btn btn-default btn-sm">
+            <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:nav.log" />
+        </a>
+        <a href="{f:be.uri(route: 'content_webmcp.consent')}" class="btn btn-default btn-sm active">
+            <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:nav.consent" />
+        </a>
+    </div>
+
+    <div class="callout callout-info mb-3">
+        <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:consent.hint" />
+    </div>
+
+    <f:for each="{sites}" as="site">
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>{site.identifier}</strong>
+                <span class="text-muted">({site.base})</span>
+                <span class="badge badge-secondary ms-2">
+                    <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:consent.provider" />: {site.consentProvider}
+                </span>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th><f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:log.toolName" /></th>
+                            <th><f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:consent.required" /></th>
+                            <th><f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:consent.category" /></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <f:for each="{site.tools}" as="tool" key="toolName">
+                            <tr>
+                                <td>{toolName}</td>
+                                <td>
+                                    <f:if condition="{tool.required}">
+                                        <f:then><span class="badge badge-warning">
+                                            <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:overview.yes" />
+                                        </span></f:then>
+                                        <f:else><span class="badge badge-success">
+                                            <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:overview.no" />
+                                        </span></f:else>
+                                    </f:if>
+                                </td>
+                                <td>{tool.category}</td>
+                            </tr>
+                        </f:for>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </f:for>
+
+</f:section>
+
+</html>

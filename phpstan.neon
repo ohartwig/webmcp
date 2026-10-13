@@ -1,0 +1,12 @@
+includes:
+    - vendor/koh/dev-typo3/config/typo3/phpstan.neon
+    # Two entries, both the same debt: the form integration is written
+    # against an older typo3/cms-form API. listForms() now takes two
+    # arguments and returns objects instead of arrays, so the integration
+    # cannot work on TYPO3 14 — it is listed here rather than excluded so it
+    # stays visible until it is migrated or dropped.
+    - phpstan-baseline.neon
+
+parameters:
+    paths:
+        - Classes

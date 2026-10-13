@@ -1,0 +1,8 @@
+# Release configuration for yasrt; the shared defaults come from the CI
+# component. Only what this repository does differently is stated here.
+product: extension
+versioning:
+  # The package continues moselwal/webmcp, whose last release was 1.5.8,
+  # under a new name and a fresh history; the line continues with the next
+  # minor instead of starting over.
+  initial: "1.6.0"

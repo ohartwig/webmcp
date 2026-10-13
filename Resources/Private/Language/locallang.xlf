@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+    <file source-language="en" datatype="plaintext" original="EXT:webmcp/Resources/Private/Language/locallang.xlf" date="2026-03-23T00:00:00Z" product-name="webmcp">
+        <body>
+            <trans-unit id="module.title">
+                <source>WebMCP Tools</source>
+            </trans-unit>
+            <trans-unit id="overview.title">
+                <source>Tool Overview</source>
+            </trans-unit>
+            <trans-unit id="overview.site">
+                <source>Site</source>
+            </trans-unit>
+            <trans-unit id="overview.rootPage">
+                <source>Root Page</source>
+            </trans-unit>
+            <trans-unit id="overview.baseUrl">
+                <source>Base URL</source>
+            </trans-unit>
+            <trans-unit id="overview.enabled">
+                <source>Enabled</source>
+            </trans-unit>
+            <trans-unit id="overview.tools">
+                <source>Tools</source>
+            </trans-unit>
+            <trans-unit id="overview.totalCalls">
+                <source>Total Calls</source>
+            </trans-unit>
+            <trans-unit id="overview.yes">
+                <source>Yes</source>
+            </trans-unit>
+            <trans-unit id="overview.no">
+                <source>No</source>
+            </trans-unit>
+            <trans-unit id="log.title">
+                <source>Tool Invocation Log</source>
+            </trans-unit>
+            <trans-unit id="log.selectSite">
+                <source>Select Site</source>
+            </trans-unit>
+            <trans-unit id="log.filter">
+                <source>Filter</source>
+            </trans-unit>
+            <trans-unit id="log.toolName">
+                <source>Tool</source>
+            </trans-unit>
+            <trans-unit id="log.timestamp">
+                <source>Timestamp</source>
+            </trans-unit>
+            <trans-unit id="log.userAgent">
+                <source>User Agent</source>
+            </trans-unit>
+            <trans-unit id="log.success">
+                <source>Status</source>
+            </trans-unit>
+            <trans-unit id="log.duration">
+                <source>Duration</source>
+            </trans-unit>
+            <trans-unit id="log.error">
+                <source>Error</source>
+            </trans-unit>
+            <trans-unit id="log.noEntries">
+                <source>No log entries found.</source>
+            </trans-unit>
+            <trans-unit id="log.page">
+                <source>Page</source>
+            </trans-unit>
+            <trans-unit id="log.of">
+                <source>of</source>
+            </trans-unit>
+            <trans-unit id="consent.title">
+                <source>Consent Configuration</source>
+            </trans-unit>
+            <trans-unit id="consent.provider">
+                <source>Consent Provider</source>
+            </trans-unit>
+            <trans-unit id="consent.required">
+                <source>Required</source>
+            </trans-unit>
+            <trans-unit id="consent.category">
+                <source>Category</source>
+            </trans-unit>
+            <trans-unit id="consent.hint">
+                <source>Consent settings are configured via Site Settings. This view shows the current configuration.</source>
+            </trans-unit>
+            <trans-unit id="nav.overview">
+                <source>Overview</source>
+            </trans-unit>
+            <trans-unit id="nav.log">
+                <source>Log</source>
+            </trans-unit>
+            <trans-unit id="nav.consent">
+                <source>Consent</source>
+            </trans-unit>
+        </body>
+    </file>
+</xliff>

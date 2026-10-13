@@ -1,0 +1,40 @@
+webmcp:
+  enabled: true
+  ard:
+    representativeQueries: ''
+  apiBasePath: '/_webmcp/api'
+  originTrialToken: ''
+  debug: false
+  consent:
+    provider: 'native'
+  bridge:
+    enabled: true
+    widget:
+      color: '#007bff'
+      position: 'bottom-right'
+      size: '30px'
+      padding: '20px'
+  tools:
+    search:
+      enabled: true
+      maxResults: 20
+      consent:
+        required: false
+        category: 'functional'
+    navigation:
+      enabled: true
+      maxDepth: 4
+      consent:
+        required: false
+        category: 'functional'
+    page-content:
+      enabled: true
+      consent:
+        required: false
+        category: 'functional'
+    form:
+      enabled: false
+      allowedForms: ''
+      consent:
+        required: false
+        category: 'functional'

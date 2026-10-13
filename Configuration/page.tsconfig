@@ -1,0 +1,12 @@
+# WebMCP default PageTSconfig
+# Override per page via Page Properties > Resources > TSconfig
+#
+# Example: Disable search tool on a specific page
+#   webmcp.tools.search.enabled = 0
+#
+# Disable all tools on folder pages (doktype 254) and recycler (doktype 255)
+[page["doktype"] == 254 || page["doktype"] == 255]
+webmcp.tools.search.enabled = 0
+webmcp.tools.navigation.enabled = 0
+webmcp.tools.page-content.enabled = 0
+[END]

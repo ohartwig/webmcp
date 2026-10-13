@@ -1,0 +1,75 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Koh\WebMcp\:
+    resource: '../Classes/'
+    exclude:
+      - '../Classes/Infrastructure/ToolProvider/FormToolProvider.php'
+      - '../Classes/Infrastructure/ToolHandler/FormToolHandler.php'
+
+  _instanceof:
+    Koh\WebMcp\Domain\Contract\ToolProviderInterface:
+      tags: ['webmcp.tool_provider']
+
+    Koh\WebMcp\Application\Contract\ToolHandlerInterface:
+      tags: ['webmcp.tool_handler']
+
+    Koh\WebMcp\Application\Contract\MultiToolHandlerInterface:
+      tags: ['webmcp.multi_tool_handler']
+
+    Koh\WebMcp\Domain\Contract\ContextProviderInterface:
+      tags: ['webmcp.context_provider']
+
+  Koh\WebMcp\Application\Service\ToolRegistry:
+    arguments:
+      $toolProviders: !tagged_iterator webmcp.tool_provider
+
+  Koh\WebMcp\Application\Service\ToolExecutionService:
+    arguments:
+      $toolHandlers: !tagged_iterator webmcp.tool_handler
+      $multiToolHandlers: !tagged_iterator webmcp.multi_tool_handler
+
+  Koh\WebMcp\Application\Service\ContextRegistry:
+    arguments:
+      $contextProviders: !tagged_iterator webmcp.context_provider
+
+  Koh\WebMcp\Application\Contract\ConsentCheckInterface:
+    alias: Koh\WebMcp\Application\Service\ConsentService
+
+  Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface:
+    alias: Koh\WebMcp\Infrastructure\Configuration\SiteConfigurationProvider
+
+  # Application-layer ports -> framework adapters. The Application services ask
+  # for these narrow interfaces; only the adapters know PSR-14 / PSR-3.
+  Koh\WebMcp\Application\Contract\EventDispatcherInterface:
+    alias: Koh\WebMcp\Infrastructure\Adapter\PsrEventDispatcher
+
+  Koh\WebMcp\Application\Contract\ErrorLoggerInterface:
+    alias: Koh\WebMcp\Infrastructure\Adapter\PsrErrorLogger
+
+  # Presentation binds nonces to the client identity through this port; the
+  # implementation lives next to the middleware that later recomputes it.
+  Koh\WebMcp\Application\Contract\ClientFingerprintInterface:
+    alias: Koh\WebMcp\Infrastructure\Http\ClientFingerprint
+
+  Koh\WebMcp\Domain\Contract\ToolInvocationLogRepositoryInterface:
+    alias: Koh\WebMcp\Infrastructure\Persistence\DoctrineToolInvocationLogRepository
+
+  Koh\WebMcp\Presentation\EventListener\InjectWebMcpJavaScriptListener:
+    arguments:
+      $cache: '@cache.webmcp'
+
+  Koh\WebMcp\Infrastructure\Http\WebMcpApiMiddleware:
+    arguments:
+      $cache: '@cache.webmcp'
+
+  Koh\WebMcp\Presentation\Backend\ToolOverviewController:
+    public: true
+
+  cache.webmcp:
+    class: TYPO3\CMS\Core\Cache\Frontend\FrontendInterface
+    factory: ['@TYPO3\CMS\Core\Cache\CacheManager', 'getCache']
+    arguments: ['webmcp']

@@ -1,0 +1,13 @@
+version = 1
+SPDX-PackageName = "koh/webmcp"
+SPDX-PackageSupplier = "Kai Ole Hartwig <mail@ole-hartwig.eu>"
+SPDX-PackageDownloadLocation = "https://github.com/ohartwig/webmcp"
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "2026 Moselwal Digitalagentur GmbH, Kai Ole Hartwig",
+  "2026 Kai Ole Hartwig <mail@ole-hartwig.eu>",
+]
+SPDX-License-Identifier = "MIT"
