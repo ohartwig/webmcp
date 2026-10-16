@@ -6,12 +6,14 @@ namespace Koh\WebMcp\Tests\Unit\Presentation\EventListener;
 
 use Koh\WebMcp\Application\Contract\ClientFingerprintInterface;
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
+use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\ContextRegistry;
 use Koh\WebMcp\Application\Service\ToolRegistry;
 use Koh\WebMcp\Domain\Contract\ContextProviderInterface;
 use Koh\WebMcp\Domain\Contract\ToolProviderInterface;
 use Koh\WebMcp\Domain\Model\ConsentRequirement;
 use Koh\WebMcp\Domain\Model\ContextDefinition;
+use Koh\WebMcp\Domain\Model\PageToolConfiguration;
 use Koh\WebMcp\Domain\Model\ToolDefinition;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Infrastructure\ToolProvider\ContextToolProvider;
@@ -25,6 +27,7 @@ use TYPO3\CMS\Core\Crypto\Random;
 use TYPO3\CMS\Core\Page\AssetCollector;
 use TYPO3\CMS\Core\Page\Event\BeforeJavaScriptsRenderingEvent;
 use TYPO3\CMS\Core\Page\PageRenderer;
+use TYPO3\CMS\Frontend\Page\PageInformation;
 
 final class InjectWebMcpJavaScriptListenerTest extends TestCase
 {
@@ -35,6 +38,10 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
     private PageRenderer $pageRenderer;
     private FrontendInterface $cache;
     private Random $random;
+    private PageToolConfigurationProviderInterface $pageToolConfiguration;
+    private ToolRegistry $toolRegistry;
+    private ContextRegistry $contextRegistry;
+    private ConsentCheckInterface $consentCheck;
 
     protected function setUp(): void
     {
@@ -45,6 +52,7 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
         $consentCheck->method('isToolAllowed')->willReturn(true);
         $consentCheck->method('getConsentRequirement')
             ->willReturn(new ConsentRequirement(toolName: 'test'));
+        $this->consentCheck = $consentCheck;
 
         $toolProvider = $this->createMock(ToolProviderInterface::class);
         $toolProvider->method('getTools')->willReturn([
@@ -57,6 +65,7 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
         ]);
 
         $contextRegistry = new ContextRegistry([$contextProvider], $dispatcher);
+        $this->contextRegistry = $contextRegistry;
 
         // Mirrors the DI wiring: context tools reach the payload through the
         // regular ToolRegistry, not through a special case in the listener.
@@ -64,6 +73,7 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
             [$toolProvider, new ContextToolProvider($contextRegistry)],
             $dispatcher,
         );
+        $this->toolRegistry = $toolRegistry;
 
         $this->siteConfigurationProvider = $this->createMock(SiteConfigurationProviderInterface::class);
         $this->clientFingerprint = $this->createMock(ClientFingerprintInterface::class);
@@ -71,6 +81,8 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
         $this->pageRenderer = $this->createMock(PageRenderer::class);
         $this->cache = $this->createMock(FrontendInterface::class);
         $this->random = $this->createMock(Random::class);
+        $this->pageToolConfiguration = $this->createMock(PageToolConfigurationProviderInterface::class);
+        $this->pageToolConfiguration->method('getConfigurationForPage')->willReturn(new PageToolConfiguration());
 
         $this->listener = new InjectWebMcpJavaScriptListener(
             $toolRegistry,
@@ -82,6 +94,7 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
             $this->pageRenderer,
             $this->cache,
             $this->random,
+            $this->pageToolConfiguration,
         );
     }
 
@@ -350,5 +363,76 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
         self::assertIsArray($captured, 'Listener did not add the webmcp-init script');
 
         return $captured;
+    }
+
+    /**
+     * An editor's `webmcp.tools.search.enabled = 0` on a page has to do two
+     * things: keep the tool out of what that page advertises, and reach the
+     * API middleware, which runs before any page is resolved and therefore
+     * reads the override from the nonce.
+     */
+    #[Test]
+    public function pageOverridesAreAppliedToTheAdvertisedToolsAndBoundToTheNonce(): void
+    {
+        $event = new BeforeJavaScriptsRenderingEvent($this->assetCollector, isInline: true, priority: false);
+
+        $pageInformation = new PageInformation();
+        $pageInformation->setId(42);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getServerParams')->willReturn(['REMOTE_ADDR' => '127.0.0.1']);
+        $request->method('getHeaderLine')->willReturn('TestAgent');
+        $request->method('getAttribute')->willReturnCallback(
+            static fn(string $name) => 'frontend.page.information' === $name ? $pageInformation : null,
+        );
+        $GLOBALS['TYPO3_REQUEST'] = $request;
+
+        $pageToolConfiguration = $this->createMock(PageToolConfigurationProviderInterface::class);
+        $pageToolConfiguration->expects(self::once())
+            ->method('getConfigurationForPage')
+            ->with(42)
+            ->willReturn(new PageToolConfiguration(['search' => false]));
+
+        $listener = new InjectWebMcpJavaScriptListener(
+            $this->toolRegistry,
+            $this->contextRegistry,
+            $this->siteConfigurationProvider,
+            $this->consentCheck,
+            $this->clientFingerprint,
+            $this->assetCollector,
+            $this->pageRenderer,
+            $this->cache,
+            $this->random,
+            $pageToolConfiguration,
+        );
+
+        $this->siteConfigurationProvider->method('getSettings')
+            ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
+        $this->random->method('generateRandomHexString')->willReturn(str_repeat('e', 64));
+
+        $storedNonce = null;
+        $this->cache->method('set')->willReturnCallback(
+            static function (string $key, string $value) use (&$storedNonce): void {
+                $storedNonce = json_decode($value, true);
+            },
+        );
+
+        $captured = null;
+        $this->assetCollector->method('addJavaScript')
+            ->willReturnCallback(function (string $id, string $source, array $attrs = []) use (&$captured) {
+                if ('webmcp-init' === $id) {
+                    $captured = json_decode($attrs['data-webmcp-config'], true, 512, JSON_THROW_ON_ERROR);
+                }
+
+                return $this->assetCollector;
+            });
+
+        $listener($event);
+        unset($GLOBALS['TYPO3_REQUEST']);
+
+        self::assertIsArray($captured);
+        self::assertNotContains('search', array_column($captured['tools'], 'name'), 'the page switched search off');
+        self::assertSame(42, $storedNonce['pageId']);
+        self::assertSame(['search' => false], $storedNonce['toolOverrides']);
     }
 }

@@ -6,6 +6,7 @@ namespace Koh\WebMcp\Presentation\EventListener;
 
 use Koh\WebMcp\Application\Contract\ClientFingerprintInterface;
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
+use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\ContextRegistry;
 use Koh\WebMcp\Application\Service\ToolRegistry;
@@ -16,6 +17,7 @@ use TYPO3\CMS\Core\Page\AssetCollector;
 use TYPO3\CMS\Core\Page\Event\BeforeJavaScriptsRenderingEvent;
 use TYPO3\CMS\Core\Page\PageRenderer;
 use TYPO3\CMS\Core\Site\Entity\Site;
+use TYPO3\CMS\Frontend\Page\PageInformation;
 
 #[AsEventListener(identifier: 'webmcp/inject-javascript')]
 final readonly class InjectWebMcpJavaScriptListener
@@ -30,6 +32,7 @@ final readonly class InjectWebMcpJavaScriptListener
         private PageRenderer $pageRenderer,
         private FrontendInterface $cache,
         private Random $random,
+        private PageToolConfigurationProviderInterface $pageToolConfiguration,
     ) {}
 
     public function __invoke(BeforeJavaScriptsRenderingEvent $event): void
@@ -51,7 +54,13 @@ final readonly class InjectWebMcpJavaScriptListener
             return;
         }
 
-        $tools = $this->toolRegistry->getTools($settings);
+        // The page's own TSconfig overrides apply to what is advertised here,
+        // and travel with the nonce so the API applies them to what runs.
+        $pageInformation = $request->getAttribute('frontend.page.information');
+        $pageId = $pageInformation instanceof PageInformation ? $pageInformation->getId() : 0;
+        $pageConfig = $pageId > 0 ? $this->pageToolConfiguration->getConfigurationForPage($pageId) : null;
+
+        $tools = $this->toolRegistry->getTools($settings, $pageConfig);
         $contexts = $this->contextRegistry->getContexts($settings);
 
         if ([] === $tools && [] === $contexts) {
@@ -64,11 +73,16 @@ final readonly class InjectWebMcpJavaScriptListener
         // Must match what the API middleware computes, or no nonce validates.
         $fingerprint = $this->clientFingerprint->ofCurrentRequest();
 
-        // Store nonce with fingerprint in cache (TTL: 1 hour)
+        // Store nonce with fingerprint in cache (TTL: 1 hour). The page and
+        // its tool overrides are bound to it: the API middleware runs before
+        // page resolution and has no other way to know which page's rules
+        // apply to the call.
         $this->cache->set('nonce_' . $nonce, json_encode([
             'nonce' => $nonce,
             'fingerprint' => $fingerprint,
             'created' => time(),
+            'pageId' => $pageId,
+            'toolOverrides' => null !== $pageConfig ? $pageConfig->toolOverrides : [],
         ]), ['webmcp_nonce'], 3600);
 
         // Build consent requirements for tools that need consent

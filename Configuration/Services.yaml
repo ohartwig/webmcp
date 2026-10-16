@@ -63,6 +63,11 @@ services:
   Koh\WebMcp\Application\Contract\PageAccessInterface:
     alias: Koh\WebMcp\Infrastructure\Page\PageAccessResolver
 
+  # Page TSconfig overrides: read by Presentation when it advertises tools on
+  # a page, bound to the nonce, and applied again by the API middleware.
+  Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface:
+    alias: Koh\WebMcp\Infrastructure\Configuration\PageTsConfigToolProvider
+
   Koh\WebMcp\Presentation\EventListener\InjectWebMcpJavaScriptListener:
     arguments:
       $cache: '@cache.webmcp'

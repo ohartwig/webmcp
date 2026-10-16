@@ -35,9 +35,15 @@
   }
 
   function exec(name, input) {
+    var headers = { 'Content-Type': 'application/json', 'X-WebMcp-Nonce': nonce };
+    // A consent-gated tool is only ever run after allowed() passed; the
+    // server refuses the call unless the granted category is stated, so a
+    // caller that skips this script cannot skip the gate either.
+    var req = (consent.requirements || {})[name];
+    if (req && req.required && req.category) headers['X-WebMcp-Consent'] = req.category;
     return fetch(api + '/' + encodeURIComponent(name), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-WebMcp-Nonce': nonce },
+      headers: headers,
       body: JSON.stringify(input)
     }).then(function (r) {
       if (!r.ok) throw new Error(name + ': ' + r.status);

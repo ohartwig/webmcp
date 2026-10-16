@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\Configuration;
 
+use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Domain\Model\PageToolConfiguration;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 
-final readonly class PageTsConfigToolProvider
+final readonly class PageTsConfigToolProvider implements PageToolConfigurationProviderInterface
 {
     /**
      * Get page-level tool configuration from PageTSconfig.

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Application\Service;
 
+use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
 use Koh\WebMcp\Application\Event\CollectToolsEvent;
 use Koh\WebMcp\Domain\Contract\ToolProviderInterface;
 use Koh\WebMcp\Domain\Model\PageToolConfiguration;
 use Koh\WebMcp\Domain\Model\ToolDefinition;
-use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
 
 final readonly class ToolRegistry
 {
@@ -72,5 +72,42 @@ final readonly class ToolRegistry
         $this->eventDispatcher->dispatch($event);
 
         return $event->getTools();
+    }
+
+    /**
+     * The one tool of that name the site offers under these settings and page
+     * overrides, or null. This is the question the API middleware asks before
+     * it executes anything: what is advertised and what runs must be decided
+     * by the same filter, or switching a tool off closes nothing.
+     *
+     * @param array<string, array<string, mixed>> $siteSettings
+     */
+    public function findTool(string $name, array $siteSettings = [], ?PageToolConfiguration $pageConfig = null): ?ToolDefinition
+    {
+        foreach ($this->getTools($siteSettings, $pageConfig) as $tool) {
+            if ($tool->name === $name) {
+                return $tool;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The identifiers of every provider wired into this installation, own
+     * and third-party alike — what the backend module shows an operator so
+     * that a provider another extension registers does not go unnoticed.
+     *
+     * @return list<string>
+     */
+    public function getProviderIdentifiers(): array
+    {
+        $identifiers = [];
+        foreach ($this->toolProviders as $provider) {
+            $identifiers[] = $provider->getIdentifier();
+        }
+        sort($identifiers);
+
+        return $identifiers;
     }
 }
