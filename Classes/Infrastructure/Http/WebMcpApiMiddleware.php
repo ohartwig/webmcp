@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Koh\WebMcp\Infrastructure\Http;
 
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
+use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\ToolExecutionService;
 use Koh\WebMcp\Application\Service\ToolInvocationLogger;
@@ -23,8 +24,6 @@ use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 
 final readonly class WebMcpApiMiddleware implements MiddlewareInterface
 {
-    private const int RATE_LIMIT_MAX_REQUESTS = 60;
-    private const int RATE_LIMIT_WINDOW_SECONDS = 60;
     private const int MAX_BODY_SIZE = 65536;
 
     /**
@@ -43,6 +42,7 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         private StreamFactoryInterface $streamFactory,
         private ToolRegistry $toolRegistry,
         private ConsentCheckInterface $consentCheck,
+        private RateLimiterInterface $rateLimiter,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -78,13 +78,6 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         $nonceData = '' === $nonce ? null : $this->validateNonce($nonce, $request);
         if (null === $nonceData) {
             return $this->jsonResponse(['error' => 'Invalid or missing nonce'], 403);
-        }
-
-        // Rate limiting per caller. Deliberately NOT per nonce: a nonce is
-        // minted on every page render, so a caller who spent its budget simply
-        // reloads and gets a fresh one. The fingerprint survives that.
-        if (!$this->checkRateLimit($this->buildClientFingerprint($request))) {
-            return $this->jsonResponse(['error' => 'Rate limit exceeded'], 429);
         }
 
         // Parse input with size limit
@@ -125,6 +118,14 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         $requirement = $this->consentCheck->getConsentRequirement($toolName, $settings);
         if ($requirement->required && !hash_equals($requirement->category, $request->getHeaderLine(self::CONSENT_HEADER))) {
             return $this->jsonResponse(['error' => 'Consent required'], 403);
+        }
+
+        // Rate limiting per caller and per site. Deliberately NOT per nonce
+        // (a nonce is minted on every page render, so a caller who spent its
+        // budget would simply reload) and NOT per fingerprint either: half of
+        // that was the User-Agent, a header the caller chooses.
+        if (!$this->rateLimiter->allow(ClientFingerprint::ip($request), $site instanceof Site ? $site->getIdentifier() : '')) {
+            return $this->jsonResponse(['error' => 'Rate limit exceeded'], 429);
         }
 
         // Build execution context from request
@@ -217,24 +218,6 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
     private function buildClientFingerprint(ServerRequestInterface $request): string
     {
         return ClientFingerprint::of($request);
-    }
-
-    private function checkRateLimit(string $fingerprint): bool
-    {
-        $rateLimitKey = 'ratelimit_' . substr($fingerprint, 0, 32);
-
-        $current = $this->cache->get($rateLimitKey);
-        $count = false !== $current ? (int) $current : 0;
-
-        if ($count >= self::RATE_LIMIT_MAX_REQUESTS) {
-            return false;
-        }
-
-        // Note: TYPO3 cache API resets TTL on each set() — no atomic increment available.
-        // This is acceptable as the sliding window provides a soft rate limit.
-        $this->cache->set($rateLimitKey, (string) ($count + 1), ['webmcp_ratelimit'], self::RATE_LIMIT_WINDOW_SECONDS);
-
-        return true;
     }
 
     /**

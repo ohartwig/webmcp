@@ -16,3 +16,11 @@ CREATE TABLE tx_webmcp_tool_log (
     KEY idx_tool (tool_name),
     KEY idx_crdate (crdate)
 );
+
+CREATE TABLE tx_webmcp_rate_limit (
+    identifier varchar(64) DEFAULT '' NOT NULL,
+    window_start int(11) unsigned DEFAULT '0' NOT NULL,
+    hits int(11) unsigned DEFAULT '0' NOT NULL,
+    PRIMARY KEY (identifier),
+    KEY idx_window (window_start)
+);

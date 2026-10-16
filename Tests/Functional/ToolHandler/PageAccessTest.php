@@ -10,6 +10,8 @@ use Koh\WebMcp\Infrastructure\ToolHandler\PageContentToolHandler;
 use Koh\WebMcp\Infrastructure\ToolHandler\SearchToolHandler;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
+use TYPO3\CMS\Core\Cache\CacheManager;
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 /**
@@ -133,5 +135,29 @@ final class PageAccessTest extends FunctionalTestCase
         );
 
         self::assertFalse($result->success);
+    }
+
+    /**
+     * The set is computed once and reused: a page added behind the cache's
+     * back is not seen until the `pages` cache group is flushed, which every
+     * content change does.
+     */
+    #[Test]
+    public function theAccessibleSetIsCachedUntilThePagesGroupIsFlushed(): void
+    {
+        $resolver = $this->get(PageAccessResolver::class);
+        self::assertSame([1, 2, 11, 13], $resolver->accessiblePageIds(self::ROOT));
+
+        $this->get(ConnectionPool::class)->getConnectionForTable('pages')->insert('pages', [
+            'uid' => 20, 'pid' => 1, 'sorting' => 4096, 'doktype' => 1, 'title' => 'Late page', 'slug' => '/late',
+        ]);
+
+        self::assertSame([1, 2, 11, 13], $resolver->accessiblePageIds(self::ROOT), 'served from the cache');
+
+        $this->get(CacheManager::class)->flushCachesInGroup('pages');
+
+        // Level order: the new page is a child of the root, so it sorts with
+        // page 2, before the grandchildren 11 and 13.
+        self::assertSame([1, 2, 20, 11, 13], $resolver->accessiblePageIds(self::ROOT), 'recomputed after the flush');
     }
 }

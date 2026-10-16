@@ -19,7 +19,7 @@ interface PageAccessInterface
 {
     /**
      * The ids of every page below (and including) the root page that the
-     * current frontend context may read, in tree order.
+     * current frontend context may read, level by level from the root.
      *
      * @return int[]
      */

@@ -68,6 +68,14 @@ services:
   Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface:
     alias: Koh\WebMcp\Infrastructure\Configuration\PageTsConfigToolProvider
 
+  Koh\WebMcp\Infrastructure\Page\PageAccessResolver:
+    arguments:
+      $cache: '@cache.webmcp'
+
+  # Tool calls per caller and per site, counted atomically in the database.
+  Koh\WebMcp\Application\Contract\RateLimiterInterface:
+    alias: Koh\WebMcp\Infrastructure\Persistence\DoctrineRateLimiter
+
   Koh\WebMcp\Presentation\EventListener\InjectWebMcpJavaScriptListener:
     arguments:
       $cache: '@cache.webmcp'

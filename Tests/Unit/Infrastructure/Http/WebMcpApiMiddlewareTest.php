@@ -7,6 +7,7 @@ namespace Koh\WebMcp\Tests\Unit\Infrastructure\Http;
 use Koh\WebMcp\Application\Contract\ErrorLoggerInterface;
 use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
+use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\ToolHandlerInterface;
 use Koh\WebMcp\Application\Service\ConsentService;
 use Koh\WebMcp\Application\Service\ToolExecutionService;
@@ -39,6 +40,8 @@ final class WebMcpApiMiddlewareTest extends TestCase
     private ToolHandlerInterface&MockObject $searchHandler;
     private ToolHandlerInterface&MockObject $rogueHandler;
     private ToolHandlerInterface&MockObject $shopHandler;
+    private RateLimiterInterface&MockObject $rateLimiter;
+    private ToolRegistry $toolRegistry;
 
     protected function setUp(): void
     {
@@ -77,7 +80,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
         $shopProvider->method('getTools')->willReturn([
             new ToolDefinition(name: 'product-search', description: 'Find products', inputSchema: []),
         ]);
-        $toolRegistry = new ToolRegistry([$searchProvider, $shopProvider], $dispatcher);
+        $this->toolRegistry = new ToolRegistry([$searchProvider, $shopProvider], $dispatcher);
 
         $this->siteConfigurationProvider = $this->createMock(SiteConfigurationProviderInterface::class);
         $this->cache = $this->createMock(FrontendInterface::class);
@@ -87,6 +90,9 @@ final class WebMcpApiMiddlewareTest extends TestCase
         $logRepository = $this->createMock(ToolInvocationLogRepositoryInterface::class);
         $invocationLogger = new ToolInvocationLogger($logRepository, $this->createMock(ErrorLoggerInterface::class));
 
+        $this->rateLimiter = $this->createMock(RateLimiterInterface::class);
+        $this->rateLimiter->method('allow')->willReturn(true);
+
         $this->middleware = new WebMcpApiMiddleware(
             $toolExecutionService,
             $this->siteConfigurationProvider,
@@ -94,50 +100,69 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->cache,
             $this->responseFactory,
             $this->streamFactory,
-            $toolRegistry,
+            $this->toolRegistry,
             new ConsentService(),
+            $this->rateLimiter,
         );
     }
 
-    public function testRateLimitFollowsTheCallerNotTheNonce(): void
+    /**
+     * The budget belongs to the address. Not to the nonce (minted on every
+     * page render) and not to the User-Agent (a header the caller chooses):
+     * two nonces and two User-Agents from one address must land on one key.
+     */
+    #[Test]
+    public function theRateLimitIsKeyedOnTheAddressAlone(): void
     {
-        // The point of the change: a nonce is minted on every page render, so
-        // keying the budget on it meant a caller who ran out simply reloaded
-        // the page and got another 60. The key must survive that.
         $this->siteConfigurationProvider->method('getSettings')
             ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
         $this->setupJsonResponseMock();
 
-        $seenKeys = [];
-        $this->cache->method('get')->willReturnCallback(
-            function (string $key) use (&$seenKeys) {
-                if (str_starts_with($key, 'ratelimit_')) {
-                    $seenKeys[] = $key;
+        $seen = [];
+        $rateLimiter = $this->createMock(RateLimiterInterface::class);
+        $rateLimiter->method('allow')->willReturnCallback(
+            static function (string $address, string $site) use (&$seen): bool {
+                $seen[] = $address;
 
+                return true;
+            },
+        );
+        $middleware = new WebMcpApiMiddleware(
+            $this->toolExecutionService(),
+            $this->siteConfigurationProvider,
+            new ToolInvocationLogger($this->createMock(ToolInvocationLogRepositoryInterface::class), $this->createMock(ErrorLoggerInterface::class)),
+            $this->cache,
+            $this->responseFactory,
+            $this->streamFactory,
+            $this->toolRegistry,
+            new ConsentService(),
+            $rateLimiter,
+        );
+
+        $this->cache->method('get')->willReturnCallback(
+            function (string $key) {
+                if (!str_starts_with($key, 'nonce_')) {
                     return false;
                 }
+                $nonce = str_replace('nonce_', '', $key);
 
-                return str_starts_with($key, 'nonce_')
-                    ? $this->buildCachedNonceData(str_replace('nonce_', '', $key))
-                    : false;
+                return $this->buildCachedNonceData($nonce, '198.51.100.9', str_repeat('a', 64) === $nonce ? 'Agent/1' : 'Agent/2');
             }
         );
 
         $handler = $this->createMock(RequestHandlerInterface::class);
+        $middleware->process($this->createRequest('/_webmcp/api/search', 'POST', str_repeat('a', 64), '{}', '198.51.100.9', 'Agent/1'), $handler);
+        $middleware->process($this->createRequest('/_webmcp/api/search', 'POST', str_repeat('b', 64), '{}', '198.51.100.9', 'Agent/2'), $handler);
 
-        foreach ([str_repeat('a', 64), str_repeat('b', 64)] as $nonce) {
-            $this->middleware->process(
-                $this->createRequest('/_webmcp/api/search', 'POST', $nonce, '{}'),
-                $handler,
-            );
-        }
+        self::assertSame(['198.51.100.9', '198.51.100.9'], $seen);
+    }
 
-        self::assertCount(2, $seenKeys);
-        self::assertSame(
-            $seenKeys[0],
-            $seenKeys[1],
-            'Two different nonces from the same caller must share one budget',
-        );
+    private function toolExecutionService(): ToolExecutionService
+    {
+        $dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $dispatcher->method('dispatch')->willReturnCallback(fn($event) => $event);
+
+        return new ToolExecutionService([$this->searchHandler], $this->createMock(ErrorLoggerInterface::class), $dispatcher);
     }
 
     private function createRequest(
@@ -594,12 +619,23 @@ final class WebMcpApiMiddlewareTest extends TestCase
 
         $cachedData = $this->buildCachedNonceData($validHexNonce);
         $this->cache->method('get')->willReturnCallback(
-            fn(string $key) => match (true) {
-                str_starts_with($key, 'nonce_') => $cachedData,
-                str_starts_with($key, 'ratelimit_') => '60',
-                default => false,
-            }
+            fn(string $key) => str_starts_with($key, 'nonce_') ? $cachedData : false
         );
+
+        $rateLimiter = $this->createMock(RateLimiterInterface::class);
+        $rateLimiter->method('allow')->willReturn(false);
+        $middleware = new WebMcpApiMiddleware(
+            $this->toolExecutionService(),
+            $this->siteConfigurationProvider,
+            new ToolInvocationLogger($this->createMock(ToolInvocationLogRepositoryInterface::class), $this->createMock(ErrorLoggerInterface::class)),
+            $this->cache,
+            $this->responseFactory,
+            $this->streamFactory,
+            $this->toolRegistry,
+            new ConsentService(),
+            $rateLimiter,
+        );
+        $this->searchHandler->expects(self::never())->method('execute');
 
         $handler = $this->createMock(RequestHandlerInterface::class);
 
@@ -607,6 +643,6 @@ final class WebMcpApiMiddlewareTest extends TestCase
             ->method('createResponse')
             ->with(429);
 
-        $this->middleware->process($request, $handler);
+        $middleware->process($request, $handler);
     }
 }
