@@ -3,6 +3,13 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.6](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.5...v1.6.6) (2026-10-16)
+
+### :repeat: Chores
+
+* remove nested .claude/.claude directory ([adf64ec](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/adf64ece3bd44e74c5502e244a894c0cb72bbdcd))
+* **repo-templates:** sync ([92b7c5d](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/92b7c5d959d64c67847d49e6d3e089b0389820e3))
+
 ## [1.6.5](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.4...v1.6.5) (2026-10-16)
 
 ### :bug: Fixes
