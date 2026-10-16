@@ -3,6 +3,17 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.4](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.3...v1.6.4) (2026-10-16)
+
+### :bug: Fixes
+
+* **test:** make Tests/phpunit.xml valid for PHPUnit 13 and unit-only ([618f996](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/618f996fa7db0203c315c9dd1e9cc8fd30ff3567))
+
+### :repeat: Continuous Integrations
+
+* **markdown:** make lint:markdown pass and let it gate again ([2f22caf](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/2f22cafceb6e0e7c5643ca3c91478c77f8be904f))
+* **links:** ignore the hosts the IPv6-only runners cannot reach ([778fee4](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/778fee4885abf1645c69e00cc6988a9ddab3bf99))
+
 ## [1.6.3](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.2...v1.6.3) (2026-10-16)
 
 ### :bug: Fixes
