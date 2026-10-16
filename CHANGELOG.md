@@ -3,6 +3,26 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.7](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.5...v1.6.7) (2026-10-16)
+
+### :bug: Fixes
+
+* **log:** cut the reduced user agent at a token boundary ([1f0aeda](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/1f0aedaed3ec693c0f35bea3561d624219d9c2bb))
+* **log:** key the address hash, reduce the user agent, enforce a retention ([942eb48](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/942eb48ab693b01dbc876e2943e695217d1fa0b3))
+
+### :memo: Documentation
+
+* **readme:** name the language of the cron example fence ([318d125](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/318d125f3dd2e290942da7d82852e69a8d48d6ec))
+
+### :repeat: Continuous Integrations
+
+* check every link again, the runner can reach them ([b573af4](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/b573af44b6c5dcf08502f4be3d7e7781e4df60a5))
+
+### :repeat: Chores
+
+* remove nested .claude/.claude directory ([adf64ec](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/adf64ece3bd44e74c5502e244a894c0cb72bbdcd))
+* **repo-templates:** sync ([92b7c5d](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/92b7c5d959d64c67847d49e6d3e089b0389820e3))
+
 ## [1.6.6](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.5...v1.6.6) (2026-10-16)
 
 ### :repeat: Chores
