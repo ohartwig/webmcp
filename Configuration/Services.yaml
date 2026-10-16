@@ -58,6 +58,11 @@ services:
   Koh\WebMcp\Domain\Contract\ToolInvocationLogRepositoryInterface:
     alias: Koh\WebMcp\Infrastructure\Persistence\DoctrineToolInvocationLogRepository
 
+  # Which pages the visitor may read. The handlers ask through this port so
+  # that search and page-content cannot disagree about it.
+  Koh\WebMcp\Application\Contract\PageAccessInterface:
+    alias: Koh\WebMcp\Infrastructure\Page\PageAccessResolver
+
   Koh\WebMcp\Presentation\EventListener\InjectWebMcpJavaScriptListener:
     arguments:
       $cache: '@cache.webmcp'

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\ToolHandler;
 
+use Doctrine\DBAL\ParameterType;
+use Koh\WebMcp\Application\Contract\PageAccessInterface;
 use Koh\WebMcp\Application\Contract\ToolHandlerInterface;
 use Koh\WebMcp\Domain\Model\ExecutionContext;
 use Koh\WebMcp\Domain\Model\ToolResult;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
-use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Database\Query\Restriction\FrontendRestrictionContainer;
 
 final readonly class PageContentToolHandler implements ToolHandlerInterface
@@ -18,6 +19,7 @@ final readonly class PageContentToolHandler implements ToolHandlerInterface
     public function __construct(
         private ConnectionPool $connectionPool,
         private Context $context,
+        private PageAccessInterface $pageAccess,
     ) {}
 
     public function getToolName(): string
@@ -44,8 +46,11 @@ final readonly class PageContentToolHandler implements ToolHandlerInterface
 
         $pageId = (int) $pageId;
 
-        // Verify page belongs to current site
-        if (!$this->pageExistsInSite($pageId, $context->rootPageId)) {
+        // The page must belong to this site and be readable for the visitor,
+        // including what it inherits from its rootline. A page uid is a small
+        // integer; "not found" is the only answer a page the visitor may not
+        // see gets, whether or not it exists.
+        if (!$this->pageAccess->isAccessible($pageId, $context->rootPageId)) {
             return ToolResult::error('Page not found');
         }
 
@@ -98,49 +103,6 @@ final readonly class PageContentToolHandler implements ToolHandlerInterface
         return $queryBuilder;
     }
 
-    /**
-     * Check if a page belongs to the given site's page tree by walking up the rootline.
-     */
-    private function pageExistsInSite(int $pageId, int $rootPageId): bool
-    {
-        if ($pageId === $rootPageId) {
-            return true;
-        }
-
-        $currentId = $pageId;
-        $maxDepth = 100;
-
-        for ($i = 0; $i < $maxDepth; ++$i) {
-            $queryBuilder = $this->connectionPool->getQueryBuilderForTable('pages');
-            $queryBuilder->getRestrictions()->removeAll()->add(new DeletedRestriction());
-
-            $row = $queryBuilder
-                ->select('pid')
-                ->from('pages')
-                ->where($queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($currentId, \Doctrine\DBAL\ParameterType::INTEGER)))
-                ->setMaxResults(1)
-                ->executeQuery()
-                ->fetchAssociative();
-
-            if (false === $row) {
-                return false;
-            }
-
-            $parentId = (int) $row['pid'];
-            if ($parentId === $rootPageId || $currentId === $rootPageId) {
-                return true;
-            }
-
-            if (0 === $parentId) {
-                return false;
-            }
-
-            $currentId = $parentId;
-        }
-
-        return false;
-    }
-
     private function resolvePageIdBySlug(string $slug, int $rootPageId): ?int
     {
         $queryBuilder = $this->createQueryBuilder('pages');
@@ -154,9 +116,9 @@ final readonly class PageContentToolHandler implements ToolHandlerInterface
             ->executeQuery()
             ->fetchAllAssociative();
 
-        // Find the one that belongs to the current site
+        // Find the one that belongs to the current site and may be read
         foreach ($results as $result) {
-            if ($this->pageExistsInSite((int) $result['uid'], $rootPageId)) {
+            if ($this->pageAccess->isAccessible((int) $result['uid'], $rootPageId)) {
                 return (int) $result['uid'];
             }
         }
@@ -175,7 +137,7 @@ final readonly class PageContentToolHandler implements ToolHandlerInterface
             ->select('uid', 'title', 'slug', 'description', 'abstract')
             ->from('pages')
             ->where(
-                $queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($pageId, \Doctrine\DBAL\ParameterType::INTEGER)),
+                $queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($pageId, ParameterType::INTEGER)),
             )
             ->setMaxResults(1)
             ->executeQuery()
@@ -195,8 +157,8 @@ final readonly class PageContentToolHandler implements ToolHandlerInterface
             ->select('uid', 'CType', 'colPos', 'header', 'subheader', 'bodytext')
             ->from('tt_content')
             ->where(
-                $queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($pageId, \Doctrine\DBAL\ParameterType::INTEGER)),
-                $queryBuilder->expr()->eq('sys_language_uid', $queryBuilder->createNamedParameter(0, \Doctrine\DBAL\ParameterType::INTEGER)),
+                $queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($pageId, ParameterType::INTEGER)),
+                $queryBuilder->expr()->eq('sys_language_uid', $queryBuilder->createNamedParameter(0, ParameterType::INTEGER)),
             )
             ->orderBy('colPos')
             ->addOrderBy('sorting')
