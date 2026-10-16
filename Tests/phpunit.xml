@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    executionOrder is "depends,random", not "depends,defects", and that is not
-    a preference.
+    executionOrder is "random", not "defects", and that is not a preference.
 
     Infection rewrites this file into a temporary copy of its own and forces
     recordTestRunHistory="false" there, together with failOnWarning="true" and
@@ -17,20 +16,32 @@
 
     Random order is what Infection asks for anyway: a mutation score is only
     worth reading over a suite with no hidden inter-test dependencies.
+
+    The "depends," prefix this attribute used to carry is gone because PHPUnit
+    13 removed it from its schema: "depends,random" no longer validates, and
+    Infection has PHPUnit validate this file before anything else, so
+    the invalid value ended test:infection with exit 3 before a single mutant.
+    Declared dependencies are still honoured: resolveDependencies="true" below
+    is what orders them, and it always was.
 -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/13.4/phpunit.xsd"
          bootstrap="../vendor/autoload.php"
          colors="true"
-         executionOrder="depends,random"
+         executionOrder="random"
          resolveDependencies="true"
          cacheDirectory=".phpunit.cache">
+    <!--
+        Unit only. The Functional suite lives in FunctionalTests.xml, whose
+        bootstrap sets up the TYPO3 instance those tests need; under this
+        file's plain autoloader every functional test skipped itself and then
+        errored in tearDown. test:phpunit:unit runs "testsuite Unit" anyway,
+        but Infection runs every suite a configuration declares, so the
+        Functional entry here failed its initial test run.
+    -->
     <testsuites>
         <testsuite name="Unit">
             <directory>Unit</directory>
-        </testsuite>
-        <testsuite name="Functional">
-            <directory>Functional</directory>
         </testsuite>
     </testsuites>
     <source>
