@@ -7,6 +7,7 @@ namespace Koh\WebMcp\Infrastructure\Http;
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
+use Koh\WebMcp\Application\Service\InputSchemaValidator;
 use Koh\WebMcp\Application\Service\ToolExecutionService;
 use Koh\WebMcp\Application\Service\ToolInvocationLogger;
 use Koh\WebMcp\Application\Service\ToolRegistry;
@@ -43,6 +44,7 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         private ToolRegistry $toolRegistry,
         private ConsentCheckInterface $consentCheck,
         private RateLimiterInterface $rateLimiter,
+        private InputSchemaValidator $inputSchemaValidator,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -126,6 +128,13 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         // that was the User-Agent, a header the caller chooses.
         if (!$this->rateLimiter->allow(ClientFingerprint::ip($request), $site instanceof Site ? $site->getIdentifier() : '')) {
             return $this->jsonResponse(['error' => 'Rate limit exceeded'], 429);
+        }
+
+        // The schema the tool advertises is the contract the handler may rely
+        // on. Violations name path and rule only; a response never echoes input.
+        $violations = $this->inputSchemaValidator->validate($tool->inputSchema, $input);
+        if ([] !== $violations) {
+            return $this->jsonResponse(['error' => 'Invalid input', 'details' => $violations], 400);
         }
 
         // Build execution context from request
