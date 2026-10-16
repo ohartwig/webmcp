@@ -20,6 +20,13 @@
         </a>
     </div>
 
+    <p>
+        <f:translate key="LLL:EXT:webmcp/Resources/Private/Language/locallang.xlf:overview.providers" />:
+        <f:for each="{providers}" as="provider">
+            <span class="badge badge-default">{provider}</span>
+        </f:for>
+    </p>
+
     <div class="table-fit">
         <table class="table table-striped table-hover">
             <thead>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Presentation\Backend;
 
+use Koh\WebMcp\Application\Service\ToolRegistry;
 use Koh\WebMcp\Domain\Contract\ToolInvocationLogRepositoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -16,6 +17,7 @@ final readonly class ToolOverviewController
         private ModuleTemplateFactory $moduleTemplateFactory,
         private SiteFinder $siteFinder,
         private ToolInvocationLogRepositoryInterface $logRepository,
+        private ToolRegistry $toolRegistry,
     ) {}
 
     public function indexAction(ServerRequestInterface $request): ResponseInterface
@@ -69,6 +71,10 @@ final readonly class ToolOverviewController
 
         $moduleTemplate->assignMultiple([
             'sites' => $siteData,
+            // Every provider wired into the installation, so a provider another
+            // extension registers is visible to the operator who has to decide
+            // whether its tools belong on a site.
+            'providers' => $this->toolRegistry->getProviderIdentifiers(),
         ]);
 
         return $moduleTemplate->renderResponse('ToolOverview/Index');

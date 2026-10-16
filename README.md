@@ -126,6 +126,22 @@ and cannot rebuild them, so they are not advertised in the discovery endpoints e
 
 All tools respect TYPO3 access restrictions (`fe_group`, `starttime`, `endtime`, `hidden`). Only content visible to the current visitor (anonymous or logged-in) is returned.
 
+### What is advertised is what runs
+
+The API executes only what the site advertises. `webmcp.tools.<name>.enabled`, the
+provider key (`webmcp.tools.form.enabled` for every `form-*` tool), and the page TSconfig
+override of the page the nonce was minted on are applied by the middleware before any
+handler runs; a tool switched off anywhere answers `404` at `/_webmcp/api/<name>`. A
+handler with no provider advertising it is not reachable at all. The backend module lists
+every registered tool provider, including those other extensions bring, so a provider a
+site never meant to expose can be switched off by its key.
+
+A tool with `consent.required: true` runs only when the request carries
+`X-WebMcp-Consent: <category>` with the configured category. The init script sends that
+header after its own consent check passed, so a caller that bypasses the page cannot
+bypass the gate; it is the visitor's page asserting the visitor's consent, not a proof
+the server could verify on its own.
+
 ## Creating Custom Tools
 
 ### 1. Implement a ToolProvider

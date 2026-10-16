@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\Http;
 
+use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\ToolExecutionService;
 use Koh\WebMcp\Application\Service\ToolInvocationLogger;
+use Koh\WebMcp\Application\Service\ToolRegistry;
 use Koh\WebMcp\Domain\Model\ExecutionContext;
+use Koh\WebMcp\Domain\Model\PageToolConfiguration;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -24,6 +27,13 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
     private const int RATE_LIMIT_WINDOW_SECONDS = 60;
     private const int MAX_BODY_SIZE = 65536;
 
+    /**
+     * Sent by the init script for a tool whose consent requirement its
+     * consent check passed, carrying the category it granted. See the note
+     * at the consent check below for what that does and does not prove.
+     */
+    private const string CONSENT_HEADER = 'X-WebMcp-Consent';
+
     public function __construct(
         private ToolExecutionService $toolExecutionService,
         private SiteConfigurationProviderInterface $siteConfigurationProvider,
@@ -31,6 +41,8 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         private FrontendInterface $cache,
         private ResponseFactoryInterface $responseFactory,
         private StreamFactoryInterface $streamFactory,
+        private ToolRegistry $toolRegistry,
+        private ConsentCheckInterface $consentCheck,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -63,7 +75,8 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
 
         // Validate CSRF nonce with client fingerprint
         $nonce = $request->getHeaderLine('X-WebMcp-Nonce');
-        if ('' === $nonce || !$this->validateNonce($nonce, $request)) {
+        $nonceData = '' === $nonce ? null : $this->validateNonce($nonce, $request);
+        if (null === $nonceData) {
             return $this->jsonResponse(['error' => 'Invalid or missing nonce'], 403);
         }
 
@@ -91,8 +104,27 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
             }
         }
 
-        if (!$this->toolExecutionService->hasHandler($toolName)) {
+        // What runs is what is advertised, decided by the same filter: the
+        // site settings, and the page TSconfig overrides of the page the nonce
+        // was minted on. A tool switched off there, or registered by a
+        // provider the site never enabled, is unknown here — having a handler
+        // is necessary, not sufficient.
+        $pageConfig = new PageToolConfiguration($this->toolOverridesFrom($nonceData));
+        $tool = $this->toolRegistry->findTool($toolName, $settings, $pageConfig);
+        if (null === $tool || !$this->toolExecutionService->hasHandler($toolName)) {
             return $this->jsonResponse(['error' => 'Unknown tool'], 404);
+        }
+
+        // A consent-gated tool runs only when the caller states the granted
+        // category. The init script sends it after its own consent check, so
+        // this is the visitor's page asserting the visitor's consent — the
+        // same trust level as the client-side gate, but now a caller that
+        // bypasses the page (a stolen nonce, a hand-written request) cannot
+        // run the tool without also claiming consent, and the claim is in the
+        // audit trail of the request.
+        $requirement = $this->consentCheck->getConsentRequirement($toolName, $settings);
+        if ($requirement->required && !hash_equals($requirement->category, $request->getHeaderLine(self::CONSENT_HEADER))) {
+            return $this->jsonResponse(['error' => 'Consent required'], 403);
         }
 
         // Build execution context from request
@@ -131,30 +163,55 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         );
     }
 
-    private function validateNonce(string $nonce, ServerRequestInterface $request): bool
+    /**
+     * The nonce's cache entry when the nonce is valid for this caller, else null.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function validateNonce(string $nonce, ServerRequestInterface $request): ?array
     {
         if (1 !== preg_match('/^[a-f0-9]{64}$/', $nonce)) {
-            return false;
+            return null;
         }
 
         $cacheKey = 'nonce_' . $nonce;
         $cached = $this->cache->get($cacheKey);
         if (false === $cached) {
-            return false;
+            return null;
         }
 
         $data = json_decode((string) $cached, true);
         if (!is_array($data)) {
-            return false;
+            return null;
         }
 
         // Validate client fingerprint
         $expectedFingerprint = $this->buildClientFingerprint($request);
         if (!isset($data['fingerprint']) || !hash_equals($data['fingerprint'], $expectedFingerprint)) {
-            return false;
+            return null;
         }
 
-        return true;
+        return $data;
+    }
+
+    /**
+     * The page TSconfig overrides the listener bound to the nonce. Anything
+     * that is not a name-to-flag map is ignored rather than trusted.
+     *
+     * @param array<string, mixed> $nonceData
+     *
+     * @return array<string, bool>
+     */
+    private function toolOverridesFrom(array $nonceData): array
+    {
+        $overrides = [];
+        foreach ((array) ($nonceData['toolOverrides'] ?? []) as $name => $enabled) {
+            if (is_string($name)) {
+                $overrides[$name] = (bool) $enabled;
+            }
+        }
+
+        return $overrides;
     }
 
     private function buildClientFingerprint(ServerRequestInterface $request): string

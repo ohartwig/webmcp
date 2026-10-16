@@ -178,4 +178,37 @@ final class ToolRegistryTest extends TestCase
 
         self::assertSame($settings, $seen);
     }
+
+    /**
+     * The API middleware asks this instead of "is there a handler?": the
+     * answer has to come from the same filter that decides what is advertised.
+     */
+    #[Test]
+    public function findToolAppliesTheSameFilterAsGetTools(): void
+    {
+        $provider = $this->createMock(ToolProviderInterface::class);
+        $provider->method('getIdentifier')->willReturn('search');
+        $provider->method('getTools')->willReturn([
+            new ToolDefinition(name: 'search', description: 'Search', inputSchema: []),
+        ]);
+        $registry = new ToolRegistry([$provider], $this->dispatcher);
+
+        self::assertNotNull($registry->findTool('search'));
+        self::assertNull($registry->findTool('search', ['tools' => ['search' => ['enabled' => false]]]));
+        self::assertNull($registry->findTool('search', [], new PageToolConfiguration(['search' => false])));
+        self::assertNull($registry->findTool('navigation'));
+    }
+
+    #[Test]
+    public function providerIdentifiersListEveryWiredProviderSorted(): void
+    {
+        $shop = $this->createMock(ToolProviderInterface::class);
+        $shop->method('getIdentifier')->willReturn('shop');
+        $search = $this->createMock(ToolProviderInterface::class);
+        $search->method('getIdentifier')->willReturn('search');
+
+        $registry = new ToolRegistry([$shop, $search], $this->dispatcher);
+
+        self::assertSame(['search', 'shop'], $registry->getProviderIdentifiers());
+    }
 }

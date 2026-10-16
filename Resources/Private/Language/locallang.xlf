@@ -32,6 +32,9 @@
             <trans-unit id="overview.no">
                 <source>No</source>
             </trans-unit>
+            <trans-unit id="overview.providers">
+                <source>Registered tool providers</source>
+            </trans-unit>
             <trans-unit id="log.title">
                 <source>Tool Invocation Log</source>
             </trans-unit>
