@@ -46,4 +46,36 @@ final readonly class ToolInvocationLogger
             ]);
         }
     }
+
+    /**
+     * Deletes entries older than the retention. Returns the number removed,
+     * or 0 when the repository failed — the error is logged, a tool call must
+     * not fail because housekeeping did.
+     */
+    public function purgeOlderThan(int $days): int
+    {
+        $days = max(1, $days);
+
+        try {
+            return $this->repository->deleteOlderThan(new \DateTimeImmutable("-{$days} days"));
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to purge tool invocation log', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
+    }
+
+    /**
+     * Purges on roughly one call in $oneIn, so the retention holds on an
+     * installation where nobody scheduled the cleanup command. The scheduled
+     * command stays the proper way; this is the floor under it.
+     */
+    public function maybePurge(int $days, int $oneIn = 100): void
+    {
+        if (1 === random_int(1, max(1, $oneIn))) {
+            $this->purgeOlderThan($days);
+        }
+    }
 }

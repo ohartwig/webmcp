@@ -75,6 +75,9 @@ services:
   # Tool calls per caller and per site, counted atomically in the database.
   Koh\WebMcp\Application\Contract\RateLimiterInterface:
     alias: Koh\WebMcp\Infrastructure\Persistence\DoctrineRateLimiter
+  # Retention of the tool invocation log, from the extension configuration.
+  Koh\WebMcp\Application\Contract\LogRetentionInterface:
+    alias: Koh\WebMcp\Infrastructure\Configuration\ExtensionConfigurationLogRetention
 
   Koh\WebMcp\Presentation\EventListener\InjectWebMcpJavaScriptListener:
     arguments:

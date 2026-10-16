@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Tests\Unit\Infrastructure\Command;
 
+use Koh\WebMcp\Application\Contract\LogRetentionInterface;
 use Koh\WebMcp\Domain\Contract\ToolInvocationLogRepositoryInterface;
 use Koh\WebMcp\Infrastructure\Command\CleanupToolLogCommand;
 use PHPUnit\Framework\Attributes\Test;
@@ -27,9 +28,34 @@ final class CleanupToolLogCommandTest extends TestCase
         $this->repository = $this->createMock(ToolInvocationLogRepositoryInterface::class);
     }
 
-    private function tester(): CommandTester
+    private function tester(int $configuredDays = 30): CommandTester
     {
-        return new CommandTester(new CleanupToolLogCommand($this->repository));
+        $retention = $this->createMock(LogRetentionInterface::class);
+        $retention->method('days')->willReturn($configuredDays);
+
+        return new CommandTester(new CleanupToolLogCommand($this->repository, $retention));
+    }
+
+    /**
+     * Without --days the command deletes by the configured retention, so the
+     * scheduled run and the opportunistic purge in the API agree on one value.
+     */
+    #[Test]
+    public function withoutAnOptionTheConfiguredRetentionIsUsed(): void
+    {
+        $this->repository->expects(self::once())
+            ->method('deleteOlderThan')
+            ->with(self::callback(function (\DateTimeImmutable $cutoff): bool {
+                $expected = new \DateTimeImmutable('-14 days');
+
+                return abs($cutoff->getTimestamp() - $expected->getTimestamp()) <= 1;
+            }))
+            ->willReturn(3);
+
+        $tester = $this->tester(14);
+
+        self::assertSame(0, $tester->execute([]));
+        self::assertStringContainsString('Deleted 3 log entries older than 14 days.', $tester->getDisplay());
     }
 
     #[Test]

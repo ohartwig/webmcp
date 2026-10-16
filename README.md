@@ -151,6 +151,30 @@ header after its own consent check passed, so a caller that bypasses the page ca
 bypass the gate; it is the visitor's page asserting the visitor's consent, not a proof
 the server could verify on its own.
 
+## Audit Log and Retention
+
+Every tool call is logged to `tx_webmcp_tool_log`: tool, site, success, duration, a
+keyed hash of the caller's address (HMAC with a key derived from the installation's
+`encryptionKey` — it links one caller's entries, it does not reveal the address), and
+the User-Agent reduced to its product tokens (`Mozilla/5.0 Chrome/120.0 Safari/537.36`;
+the parenthesised comments with OS and device details are dropped). That is still a
+visitor record, so it has a retention.
+
+The retention is the extension setting `logRetentionDays` (Admin Tools → Settings →
+Extension Configuration → webmcp), 30 days by default. Two things enforce it:
+
+- `vendor/bin/typo3 webmcp:cleanup-log` deletes older entries. Schedule it daily, either
+  as a Scheduler task of type *Execute console commands* or from cron:
+
+  ```crontab
+  15 3 * * * /path/to/vendor/bin/typo3 webmcp:cleanup-log
+  ```
+
+  `--days=<n>` overrides the configured retention for one run.
+- The API purges opportunistically, on about one call in a hundred, so the retention
+  holds on an installation where nobody set up the scheduler. The scheduled command is
+  the proper way; this is the floor under it.
+
 ## Creating Custom Tools
 
 ### 1. Implement a ToolProvider

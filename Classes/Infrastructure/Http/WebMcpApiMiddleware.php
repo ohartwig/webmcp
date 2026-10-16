@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Koh\WebMcp\Infrastructure\Http;
 
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
+use Koh\WebMcp\Application\Contract\LogRetentionInterface;
 use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\InputSchemaValidator;
@@ -45,6 +46,7 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         private ConsentCheckInterface $consentCheck,
         private RateLimiterInterface $rateLimiter,
         private InputSchemaValidator $inputSchemaValidator,
+        private LogRetentionInterface $logRetention,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -159,7 +161,7 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         int $durationMs,
     ): void {
         $ipHash = ClientFingerprint::ipHash($request);
-        $userAgent = preg_replace('/[^\x20-\x7E]/', '', mb_substr($request->getHeaderLine('User-Agent'), 0, 255)) ?? '';
+        $userAgent = UserAgentReducer::reduce($request->getHeaderLine('User-Agent'));
 
         $this->invocationLogger->log(
             toolName: $toolName,
@@ -171,6 +173,9 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
             durationMs: $durationMs,
             errorMessage: $errorMessage,
         );
+
+        // The retention holds even where no scheduler runs the cleanup command.
+        $this->invocationLogger->maybePurge($this->logRetention->days());
     }
 
     /**
