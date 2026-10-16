@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Tests\Unit\Infrastructure\ToolHandler;
 
+use Koh\WebMcp\Application\Contract\PageAccessInterface;
 use Koh\WebMcp\Domain\Model\ExecutionContext;
 use Koh\WebMcp\Infrastructure\ToolHandler\PageContentToolHandler;
-use PHPUnit\Framework\Attributes\Test;
 use Koh\WebMcp\Tests\Support\Typo3ContainerTrait;
+use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -20,14 +22,16 @@ final class PageContentToolHandlerTest extends TestCase
     use Typo3ContainerTrait;
 
     private PageContentToolHandler $handler;
-    private ConnectionPool $connectionPool;
+    private ConnectionPool&MockObject $connectionPool;
+    private PageAccessInterface&MockObject $pageAccess;
 
     protected function setUp(): void
     {
         $this->setUpTypo3Container();
         $this->connectionPool = $this->createMock(ConnectionPool::class);
+        $this->pageAccess = $this->createMock(PageAccessInterface::class);
         $context = $this->createMock(Context::class);
-        $this->handler = new PageContentToolHandler($this->connectionPool, $context);
+        $this->handler = new PageContentToolHandler($this->connectionPool, $context, $this->pageAccess);
     }
 
     protected function tearDown(): void
@@ -54,14 +58,35 @@ final class PageContentToolHandlerTest extends TestCase
     #[Test]
     public function executeReturnsGenericErrorForMissingPage(): void
     {
-        $queryBuilder = $this->createConfiguredQueryBuilder(null);
-        $this->connectionPool->method('getQueryBuilderForTable')->willReturn($queryBuilder);
+        $this->pageAccess->method('isAccessible')->willReturn(false);
+        $this->connectionPool->expects(self::never())->method('getQueryBuilderForTable');
 
         $context = new ExecutionContext(rootPageId: 1);
         $result = $this->handler->execute(['pageId' => 999], $context);
 
         self::assertFalse($result->success);
         // Should NOT contain the pageId or slug in the error message
+        self::assertSame('Page not found', $result->error);
+    }
+
+    /**
+     * A page the visitor may not read — hidden, scheduled, behind a login,
+     * under a protected section or in the recycler — is indistinguishable
+     * from a page that does not exist. Page uids are small integers, so
+     * anything else would let a caller enumerate the restricted ones.
+     */
+    #[Test]
+    public function aPageTheVisitorMayNotReadIsReportedAsNotFound(): void
+    {
+        $this->pageAccess->expects(self::once())
+            ->method('isAccessible')
+            ->with(42, 1)
+            ->willReturn(false);
+        $this->connectionPool->expects(self::never())->method('getQueryBuilderForTable');
+
+        $result = $this->handler->execute(['pageId' => 42], new ExecutionContext(rootPageId: 1));
+
+        self::assertFalse($result->success);
         self::assertSame('Page not found', $result->error);
     }
 
@@ -80,9 +105,33 @@ final class PageContentToolHandlerTest extends TestCase
         self::assertStringNotContainsString('/nonexistent', $result->error);
     }
 
+    /**
+     * Two sites may share a slug, and a slug may belong to a page the visitor
+     * may not read. The resolver has to skip both and take the first candidate
+     * that is readable on this site.
+     */
+    #[Test]
+    public function slugResolutionSkipsCandidatesTheVisitorMayNotRead(): void
+    {
+        $this->pageAccess->method('isAccessible')->willReturnMap([
+            [30, 1, false],
+            [31, 1, true],
+        ]);
+
+        $pageRow = ['uid' => 31, 'title' => 'Readable', 'slug' => '/shared', 'description' => '', 'abstract' => ''];
+        $this->setupQueryBuilderForPageContent($pageRow, [], [['uid' => 30], ['uid' => 31]]);
+
+        $result = $this->handler->execute(['slug' => '/shared'], new ExecutionContext(rootPageId: 1));
+
+        self::assertTrue($result->success);
+        self::assertSame(31, $result->data['page']['pageId']);
+    }
+
     #[Test]
     public function executeReturnsPageContent(): void
     {
+        $this->pageAccess->method('isAccessible')->willReturn(true);
+
         $pageRow = [
             'uid' => 10,
             'title' => 'Test Page',
@@ -117,6 +166,8 @@ final class PageContentToolHandlerTest extends TestCase
     #[Test]
     public function executeStripsHtmlFromBodytext(): void
     {
+        $this->pageAccess->method('isAccessible')->willReturn(true);
+
         $pageRow = [
             'uid' => 10,
             'title' => 'Test',
@@ -173,7 +224,12 @@ final class PageContentToolHandlerTest extends TestCase
         return $queryBuilder;
     }
 
-    private function setupQueryBuilderForPageContent(array $pageRow, array $contentRows): void
+    /**
+     * @param array<string, mixed>            $pageRow
+     * @param list<array<string, mixed>>      $contentRows
+     * @param list<array<string, mixed>>|null $slugRows    candidates a slug lookup returns; null when no slug is resolved
+     */
+    private function setupQueryBuilderForPageContent(array $pageRow, array $contentRows, ?array $slugRows = null): void
     {
         $expressionBuilder = $this->createMock(ExpressionBuilder::class);
         $expressionBuilder->method('eq')->willReturn('1=1');
@@ -181,17 +237,20 @@ final class PageContentToolHandlerTest extends TestCase
         $restrictions = $this->createMock(QueryRestrictionContainerInterface::class);
         $restrictions->method('removeAll')->willReturnSelf();
 
-        // For rootline check: returns page with pid=1 (which is rootPageId)
-        $rootlineStatement = $this->createMock(\Doctrine\DBAL\Result::class);
-        $rootlineStatement->method('fetchAssociative')->willReturn(['pid' => 1]);
+        $slugStatement = $this->createMock(\Doctrine\DBAL\Result::class);
+        $slugStatement->method('fetchAllAssociative')->willReturn($slugRows ?? []);
 
-        // For page query
         $pageStatement = $this->createMock(\Doctrine\DBAL\Result::class);
         $pageStatement->method('fetchAssociative')->willReturn($pageRow);
 
-        // For content query
         $contentStatement = $this->createMock(\Doctrine\DBAL\Result::class);
         $contentStatement->method('fetchAllAssociative')->willReturn($contentRows);
+
+        // Rootline checks go through the port now, so the queries are: an
+        // optional slug lookup, then the page, then its content.
+        $sequence = null === $slugRows
+            ? [$pageStatement, $contentStatement]
+            : [$slugStatement, $pageStatement, $contentStatement];
 
         $callCount = 0;
         $queryBuilder = $this->createMock(QueryBuilder::class);
@@ -206,15 +265,8 @@ final class PageContentToolHandlerTest extends TestCase
         $queryBuilder->method('setRestrictions')->willReturnSelf();
         $queryBuilder->method('getRestrictions')->willReturn($restrictions);
         $queryBuilder->method('executeQuery')->willReturnCallback(
-            function () use (&$callCount, $rootlineStatement, $pageStatement, $contentStatement) {
-                ++$callCount;
-
-                return match ($callCount) {
-                    1 => $rootlineStatement,  // pageExistsInSite check
-                    2 => $pageStatement,      // getPage
-                    3 => $contentStatement,   // getContentElements
-                    default => $pageStatement,
-                };
+            function () use (&$callCount, $sequence, $pageStatement) {
+                return $sequence[$callCount++] ?? $pageStatement;
             }
         );
 

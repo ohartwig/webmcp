@@ -1,0 +1,29 @@
+"pages"
+,"uid","pid","sorting","deleted","hidden","doktype","title","slug","fe_group","extendToSubpages","starttime","endtime","sys_language_uid"
+,1,0,256,0,0,1,"Root","/","",0,0,0,0
+,2,1,256,0,0,1,"Public page","/public","",0,0,0,0
+,3,1,512,0,1,1,"Hidden page","/hidden","",0,0,0,0
+,4,1,768,0,0,1,"Members page","/members","-2",0,0,0,0
+,5,1,1024,0,0,1,"Protected section","/section","-2",1,0,0,0
+,6,5,256,0,0,1,"Section child","/section/child","",0,0,0,0
+,7,1,1280,0,0,255,"Recycler","/recycler","",0,0,0,0
+,8,7,256,0,0,1,"Recycled page","/recycled","",0,0,0,0
+,9,1,1536,0,0,1,"Scheduled page","/scheduled","",0,2147000000,0,0
+,10,1,1792,0,1,1,"Hidden parent","/hidden-parent","",0,0,0,0
+,11,10,256,0,0,1,"Child of hidden parent","/hidden-parent/child","",0,0,0,0
+,12,1,2048,0,0,254,"Folder","/folder","",0,0,0,0
+,13,12,256,0,0,1,"Page in folder","/folder/page","",0,0,0,0
+,14,1,2304,0,0,1,"Expired page","/expired","",0,0,1000000000,0
+,15,1,2560,1,0,1,"Deleted page","/deleted","",0,0,0,0
+"tt_content"
+,"uid","pid","sorting","deleted","hidden","CType","header","bodytext","colPos","sys_language_uid"
+,102,2,256,0,0,"text","Public","Public text alpha",0,0
+,103,3,256,0,0,"text","Hidden","Hidden text alpha",0,0
+,104,4,256,0,0,"text","Members","Members text alpha",0,0
+,105,5,256,0,0,"text","Section","Section text alpha",0,0
+,106,6,256,0,0,"text","Child","Child text alpha",0,0
+,108,8,256,0,0,"text","Recycled","Recycled text alpha",0,0
+,109,9,256,0,0,"text","Scheduled","Scheduled text alpha",0,0
+,111,11,256,0,0,"text","Orphan","Orphan text alpha",0,0
+,113,13,256,0,0,"text","Folder child","Folder child text alpha",0,0
+,114,14,256,0,0,"text","Expired","Expired text alpha",0,0

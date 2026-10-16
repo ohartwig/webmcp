@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\ToolHandler;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Koh\WebMcp\Application\Contract\PageAccessInterface;
 use Koh\WebMcp\Application\Contract\ToolHandlerInterface;
 use Koh\WebMcp\Domain\Model\ExecutionContext;
 use Koh\WebMcp\Domain\Model\ToolResult;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
-use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
-use Doctrine\DBAL\ArrayParameterType;
 use TYPO3\CMS\Core\Database\Query\Restriction\FrontendRestrictionContainer;
 
 final readonly class SearchToolHandler implements ToolHandlerInterface
@@ -19,6 +19,7 @@ final readonly class SearchToolHandler implements ToolHandlerInterface
     public function __construct(
         private ConnectionPool $connectionPool,
         private Context $context,
+        private PageAccessInterface $pageAccess,
     ) {}
 
     public function getToolName(): string
@@ -39,7 +40,17 @@ final readonly class SearchToolHandler implements ToolHandlerInterface
             $limit = 10;
         }
 
-        $sitePageIds = $this->collectSitePageIds($context->rootPageId);
+        // Only pages the visitor may read. A content element inherits the
+        // restrictions of its page, and the element's own flags, which the
+        // frontend restrictions below check, say nothing about that.
+        $sitePageIds = $this->pageAccess->accessiblePageIds($context->rootPageId);
+        if ([] === $sitePageIds) {
+            return ToolResult::success([
+                'query' => $query,
+                'results' => [],
+                'total' => 0,
+            ]);
+        }
 
         $results = [];
 
@@ -72,45 +83,6 @@ final readonly class SearchToolHandler implements ToolHandlerInterface
             'results' => $results,
             'total' => count($results),
         ]);
-    }
-
-    /**
-     * Collect all page IDs belonging to the site's page tree.
-     *
-     * @return int[]
-     */
-    private function collectSitePageIds(int $rootPageId): array
-    {
-        $pageIds = [$rootPageId];
-        $this->collectChildPageIds($rootPageId, $pageIds, 0, 20);
-
-        return $pageIds;
-    }
-
-    /**
-     * @param int[] $pageIds
-     */
-    private function collectChildPageIds(int $parentId, array &$pageIds, int $depth, int $maxDepth): void
-    {
-        if ($depth >= $maxDepth || count($pageIds) > 10000) {
-            return;
-        }
-
-        $queryBuilder = $this->connectionPool->getQueryBuilderForTable('pages');
-        $queryBuilder->getRestrictions()->removeAll()->add(new DeletedRestriction());
-
-        $children = $queryBuilder
-            ->select('uid')
-            ->from('pages')
-            ->where($queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($parentId, \Doctrine\DBAL\ParameterType::INTEGER)))
-            ->executeQuery()
-            ->fetchAllAssociative();
-
-        foreach ($children as $child) {
-            $childId = (int) $child['uid'];
-            $pageIds[] = $childId;
-            $this->collectChildPageIds($childId, $pageIds, $depth + 1, $maxDepth);
-        }
     }
 
     private function createQueryBuilder(string $table): QueryBuilder
