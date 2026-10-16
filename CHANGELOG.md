@@ -3,6 +3,12 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.3](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.2...v1.6.3) (2026-10-16)
+
+### :bug: Fixes
+
+* **api:** execute only the tools the site advertises ([725661d](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/725661db5d18fa5239912478c83f89b14bcb0594))
+
 ## [1.6.2](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.1...v1.6.2) (2026-10-16)
 
 ### :bug: Fixes
