@@ -166,7 +166,7 @@ Extension Configuration → webmcp), 30 days by default. Two things enforce it:
 - `vendor/bin/typo3 webmcp:cleanup-log` deletes older entries. Schedule it daily, either
   as a Scheduler task of type *Execute console commands* or from cron:
 
-  ```
+  ```crontab
   15 3 * * * /path/to/vendor/bin/typo3 webmcp:cleanup-log
   ```
 
