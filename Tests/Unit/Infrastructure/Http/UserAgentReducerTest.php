@@ -43,10 +43,18 @@ final class UserAgentReducerTest extends TestCase
     }
 
     #[Test]
-    public function theResultIsBounded(): void
+    public function theResultIsBoundedAtATokenBoundary(): void
     {
         $header = implode(' ', array_fill(0, 100, 'Product/1.0'));
+        $reduced = UserAgentReducer::reduce($header);
 
-        self::assertLessThanOrEqual(UserAgentReducer::MAX_LENGTH, strlen(UserAgentReducer::reduce($header)));
+        self::assertLessThanOrEqual(UserAgentReducer::MAX_LENGTH, strlen($reduced));
+        self::assertMatchesRegularExpression('#^(Product/1\.0)( Product/1\.0)*$#', $reduced, 'no token is cut in half');
+    }
+
+    #[Test]
+    public function aSingleTokenLongerThanTheBoundIsDroppedRatherThanCut(): void
+    {
+        self::assertSame('', UserAgentReducer::reduce('A/' . str_repeat('1', UserAgentReducer::MAX_LENGTH)));
     }
 }

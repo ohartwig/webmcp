@@ -32,15 +32,23 @@ final class UserAgentReducer
             return '';
         }
 
+        // Whole tokens only: a cut inside "Chrome/120.0.0.0" would log a
+        // product that does not exist.
         $tokens = [];
+        $length = 0;
         foreach ($parts as $token) {
             if ('' === $token || 1 !== preg_match(self::TOKEN_PATTERN, $token)) {
                 continue;
             }
+            $next = $length + ([] === $tokens ? 0 : 1) + strlen($token);
+            if ($next > self::MAX_LENGTH) {
+                break;
+            }
             $tokens[] = $token;
+            $length = $next;
         }
 
-        return substr(implode(' ', $tokens), 0, self::MAX_LENGTH);
+        return implode(' ', $tokens);
     }
 
     /**
