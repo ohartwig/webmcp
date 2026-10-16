@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\Command;
 
+use Koh\WebMcp\Application\Contract\LogRetentionInterface;
 use Koh\WebMcp\Domain\Contract\ToolInvocationLogRepositoryInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -20,6 +21,7 @@ final class CleanupToolLogCommand extends Command
 {
     public function __construct(
         private readonly ToolInvocationLogRepositoryInterface $repository,
+        private readonly LogRetentionInterface $logRetention,
     ) {
         parent::__construct();
     }
@@ -30,15 +32,15 @@ final class CleanupToolLogCommand extends Command
             'days',
             'd',
             InputOption::VALUE_REQUIRED,
-            'Delete entries older than this many days',
-            '30'
+            'Delete entries older than this many days (default: the configured retention, extension setting logRetentionDays)',
         );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $days = (int) $input->getOption('days');
+        $option = $input->getOption('days');
+        $days = null === $option ? $this->logRetention->days() : (int) $option;
 
         if ($days < 1) {
             $io->error('Days must be at least 1');

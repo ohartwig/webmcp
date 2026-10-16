@@ -1,0 +1,2 @@
+# cat=basic; type=int+; label=Tool log retention (days): Tool invocation log entries older than this are deleted — by the scheduled "webmcp:cleanup-log" command, and opportunistically by the API itself, so the log does not grow forever when no scheduler runs. The log is a visitor record (keyed address hash, reduced user agent); keep this as short as your audit needs allow.
+logRetentionDays = 30

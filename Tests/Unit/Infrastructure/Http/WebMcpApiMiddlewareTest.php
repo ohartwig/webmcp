@@ -7,6 +7,7 @@ namespace Koh\WebMcp\Tests\Unit\Infrastructure\Http;
 use Koh\WebMcp\Application\Contract\ErrorLoggerInterface;
 use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
+use Koh\WebMcp\Application\Contract\LogRetentionInterface;
 use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\ToolHandlerInterface;
 use Koh\WebMcp\Application\Service\ConsentService;
@@ -112,6 +113,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             new ConsentService(),
             $this->rateLimiter,
             new InputSchemaValidator(),
+            $this->createMock(LogRetentionInterface::class),
         );
     }
 
@@ -147,6 +149,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             new ConsentService(),
             $rateLimiter,
             new InputSchemaValidator(),
+            $this->createMock(LogRetentionInterface::class),
         );
 
         $this->cache->method('get')->willReturnCallback(
@@ -645,6 +648,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             new ConsentService(),
             $rateLimiter,
             new InputSchemaValidator(),
+            $this->createMock(LogRetentionInterface::class),
         );
         $this->searchHandler->expects(self::never())->method('execute');
 
