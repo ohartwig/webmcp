@@ -3,6 +3,13 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.5](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.4...v1.6.5) (2026-10-16)
+
+### :bug: Fixes
+
+* **api:** validate the request body against the tool's input schema ([917ee49](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/917ee4994f2807d2f1f0bcc2db0cb9e7e8016cf2))
+* **api:** key the rate limit on the address, count atomically, cache the page set ([055a759](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/055a759074f9f4e3050c606a571f96aa3a6ed031))
+
 ## [1.6.4](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.3...v1.6.4) (2026-10-16)
 
 ### :bug: Fixes
