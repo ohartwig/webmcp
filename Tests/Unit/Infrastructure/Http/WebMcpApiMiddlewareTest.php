@@ -10,6 +10,7 @@ use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\ToolHandlerInterface;
 use Koh\WebMcp\Application\Service\ConsentService;
+use Koh\WebMcp\Application\Service\InputSchemaValidator;
 use Koh\WebMcp\Application\Service\ToolExecutionService;
 use Koh\WebMcp\Application\Service\ToolInvocationLogger;
 use Koh\WebMcp\Application\Service\ToolRegistry;
@@ -73,7 +74,14 @@ final class WebMcpApiMiddlewareTest extends TestCase
         $searchProvider = $this->createMock(ToolProviderInterface::class);
         $searchProvider->method('getIdentifier')->willReturn('search');
         $searchProvider->method('getTools')->willReturn([
-            new ToolDefinition(name: 'search', description: 'Search', inputSchema: []),
+            new ToolDefinition(name: 'search', description: 'Search', inputSchema: [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string'],
+                    'limit' => ['type' => 'integer'],
+                ],
+                'required' => ['query'],
+            ]),
         ]);
         $shopProvider = $this->createMock(ToolProviderInterface::class);
         $shopProvider->method('getIdentifier')->willReturn('shop');
@@ -103,6 +111,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->toolRegistry,
             new ConsentService(),
             $this->rateLimiter,
+            new InputSchemaValidator(),
         );
     }
 
@@ -137,6 +146,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->toolRegistry,
             new ConsentService(),
             $rateLimiter,
+            new InputSchemaValidator(),
         );
 
         $this->cache->method('get')->willReturnCallback(
@@ -634,6 +644,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->toolRegistry,
             new ConsentService(),
             $rateLimiter,
+            new InputSchemaValidator(),
         );
         $this->searchHandler->expects(self::never())->method('execute');
 
@@ -644,5 +655,78 @@ final class WebMcpApiMiddlewareTest extends TestCase
             ->with(429);
 
         $middleware->process($request, $handler);
+    }
+
+    /**
+     * The advertised schema is enforced before dispatch: a body that does not
+     * conform is refused with 400 and the handler never sees it.
+     */
+    #[Test]
+    public function aBodyViolatingTheToolsSchemaIsRefusedBeforeTheHandlerRuns(): void
+    {
+        $this->setupJsonResponseMock();
+        $this->siteConfigurationProvider->method('getSettings')
+            ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
+        $this->cacheServesValidNonce();
+        $this->searchHandler->expects(self::never())->method('execute');
+
+        $this->responseFactory->expects(self::once())->method('createResponse')->with(400);
+
+        $this->middleware->process(
+            $this->createRequest('/_webmcp/api/search', 'POST', str_repeat('a', 64), '{"query":["not","a","string"]}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+    }
+
+    #[Test]
+    public function aBodyMissingARequiredPropertyIsRefused(): void
+    {
+        $this->setupJsonResponseMock();
+        $this->siteConfigurationProvider->method('getSettings')
+            ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
+        $this->cacheServesValidNonce();
+        $this->searchHandler->expects(self::never())->method('execute');
+
+        $this->responseFactory->expects(self::once())->method('createResponse')->with(400);
+
+        $this->middleware->process(
+            $this->createRequest('/_webmcp/api/search', 'POST', str_repeat('a', 64), '{"limit":5}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+    }
+
+    /**
+     * The 400 body names the path and the rule — and nothing the caller sent.
+     */
+    #[Test]
+    public function theValidationResponseDoesNotEchoTheInput(): void
+    {
+        $written = null;
+        $stream = $this->createMock(StreamInterface::class);
+        $this->streamFactory->method('createStream')->willReturnCallback(
+            static function (string $content) use (&$written, $stream): StreamInterface {
+                $written = $content;
+
+                return $stream;
+            },
+        );
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('withHeader')->willReturnSelf();
+        $response->method('withBody')->willReturnSelf();
+        $this->responseFactory->method('createResponse')->willReturn($response);
+
+        $this->siteConfigurationProvider->method('getSettings')
+            ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
+        $this->cacheServesValidNonce();
+
+        $this->middleware->process(
+            $this->createRequest('/_webmcp/api/search', 'POST', str_repeat('a', 64), '{"query":"canary-value","limit":"canary-limit"}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertIsString($written);
+        self::assertStringContainsString('Invalid input', $written);
+        self::assertStringContainsString('input.limit: must be of type integer', $written);
+        self::assertStringNotContainsString('canary', $written);
     }
 }

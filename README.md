@@ -138,6 +138,13 @@ handler with no provider advertising it is not reachable at all. The backend mod
 every registered tool provider, including those other extensions bring, so a provider a
 site never meant to expose can be switched off by its key.
 
+The body of a call is validated against the tool's advertised `inputSchema` before the
+handler runs — types, required and additional properties, enum, string lengths, numeric
+bounds, array sizes, nested objects. A body that does not conform answers `400` with the
+violated paths and rules; the values a caller sent are never echoed. Handlers can rely on
+the shape they advertise. Keywords outside that subset (`pattern`, `format`, `$ref`) are
+ignored, so an unusual schema loosens the check rather than breaking the tool.
+
 A tool with `consent.required: true` runs only when the request carries
 `X-WebMcp-Consent: <category>` with the configured category. The init script sends that
 header after its own consent check passed, so a caller that bypasses the page cannot
