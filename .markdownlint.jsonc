@@ -1,0 +1,11 @@
+// The ruleset lint:markdown applies when a repository brings none — kept
+// identical on purpose. The file exists only so the job reads
+// .markdownlint-cli2.jsonc next to it: without a .markdownlint.* here the
+// component passes its own --config, which replaces that file and its
+// ignores.
+{
+  "default": true,
+  "MD013": false,
+  "MD034": false,
+  "MD060": false
+}
