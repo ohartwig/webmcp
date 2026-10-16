@@ -1,0 +1,14 @@
+# Hosts lint:link-checker cannot reach from the CI runners, not dead links.
+#
+# The job runs on the `docker` runner pool, which is IPv6-only. The hosts
+# below either publish no AAAA record (github.com, developercertificate.org,
+# www.crowdsec.net behind Vercel) or did not answer over IPv6 in any run
+# (php.net, which redirects into a loop to www.php.net there). Every
+# lint:link-checker run of this repository from 2026-10-13 to 2026-10-16
+# timed out on exactly these, so they say something about the runner, not
+# about the links. Remove an entry once the job can reach the host.
+#
+# One regular expression per line, matched against the URL.
+^https://github\.com/
+^https://developercertificate\.org/
+^https://php\.net/
