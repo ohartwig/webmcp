@@ -124,7 +124,9 @@ payload — no API round-trip. Page-scoped contexts such as `page-meta` are ther
 only available to browser agents; the API middleware runs before TYPO3's page resolver
 and cannot rebuild them, so they are not advertised in the discovery endpoints either.
 
-All tools respect TYPO3 access restrictions (`fe_group`, `starttime`, `endtime`, `hidden`). Only content visible to the current visitor (anonymous or logged-in) is returned.
+All tools respect TYPO3 access restrictions (`fe_group`, `starttime`, `endtime`, `hidden`). Only content visible to the current visitor (anonymous or logged-in) is returned. The set of readable pages is computed once per site and visitor group and cached for five minutes in the `webmcp` cache, which belongs to the `pages` group, so a content change flushes it.
+
+Calls are rate-limited per client address (60 per minute, IPv6 addresses by their /64) and per site (600 per minute), counted atomically in `tx_webmcp_rate_limit`. The User-Agent is not part of the key — it is whatever the caller says it is.
 
 ### What is advertised is what runs
 

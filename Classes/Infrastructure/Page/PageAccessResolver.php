@@ -7,6 +7,7 @@ namespace Koh\WebMcp\Infrastructure\Page;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\ParameterType;
 use Koh\WebMcp\Application\Contract\PageAccessInterface;
+use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
@@ -61,13 +62,42 @@ final readonly class PageAccessResolver implements PageAccessInterface
 
     private const array FIELDS = ['uid', 'pid', 'doktype', 'extendToSubpages', 'hidden', 'starttime', 'endtime', 'fe_group'];
 
+    /**
+     * How long a computed set is reused. The cache belongs to the `pages`
+     * group, so any page or content change flushes it before that; the
+     * lifetime bounds what a scheduled start or end time can be late by.
+     */
+    private const int CACHE_LIFETIME = 300;
+
     public function __construct(
         private ConnectionPool $connectionPool,
         private Context $context,
         private RecordAccessVoter $accessVoter,
+        private FrontendInterface $cache,
     ) {}
 
     public function accessiblePageIds(int $rootPageId): array
+    {
+        // The set depends on who is asking: the frontend groups decide the
+        // fe_group checks, so they are part of the key.
+        $groups = $this->context->getPropertyFromAspect('frontend.user', 'groupIds', [0, -1]);
+        $cacheKey = 'pages_' . $rootPageId . '_' . hash('sha256', implode(',', is_array($groups) ? $groups : []));
+
+        $cached = $this->cache->get($cacheKey);
+        if (is_array($cached)) {
+            return array_map(intval(...), $cached);
+        }
+
+        $accessible = $this->computeAccessiblePageIds($rootPageId);
+        $this->cache->set($cacheKey, $accessible, ['webmcp_pages'], self::CACHE_LIFETIME);
+
+        return $accessible;
+    }
+
+    /**
+     * @return int[]
+     */
+    private function computeAccessiblePageIds(int $rootPageId): array
     {
         $root = $this->fetchByUids([$rootPageId]);
         if (!isset($root[$rootPageId])) {
