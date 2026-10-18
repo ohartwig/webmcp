@@ -33,7 +33,7 @@ final class ClientFingerprintTest extends TestCase
 
         self::assertSame(
             hash('sha256', '203.0.113.7|Agent/2.0'),
-            new ClientFingerprint()->ofCurrentRequest(),
+            (new ClientFingerprint())->ofCurrentRequest(),
         );
     }
 
@@ -50,7 +50,7 @@ final class ClientFingerprintTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
 
-        new ClientFingerprint()->ofCurrentRequest();
+        (new ClientFingerprint())->ofCurrentRequest();
     }
 
     /**

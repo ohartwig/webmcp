@@ -174,7 +174,7 @@ final class ToolRegistryTest extends TestCase
         });
 
         $settings = ['tools' => ['form' => ['allowedForms' => 'contact']]];
-        new ToolRegistry([$provider], $this->dispatcher)->getTools($settings);
+        (new ToolRegistry([$provider], $this->dispatcher))->getTools($settings);
 
         self::assertSame($settings, $seen);
     }

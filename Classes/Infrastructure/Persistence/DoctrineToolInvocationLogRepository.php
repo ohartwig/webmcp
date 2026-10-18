@@ -120,7 +120,7 @@ final readonly class DoctrineToolInvocationLogRepository implements ToolInvocati
     {
         return new ToolInvocationLog(
             toolName: (string) $row['tool_name'],
-            timestamp: new \DateTimeImmutable()->setTimestamp((int) $row['crdate']),
+            timestamp: (new \DateTimeImmutable())->setTimestamp((int) $row['crdate']),
             userAgent: (string) $row['user_agent'],
             ipHash: (string) $row['ip_hash'],
             siteIdentifier: (string) $row['site_identifier'],

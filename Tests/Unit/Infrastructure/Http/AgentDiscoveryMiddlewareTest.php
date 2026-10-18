@@ -64,11 +64,11 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     public function leavesNonHtmlResponsesUntouched(): void
     {
         $site = $this->site();
-        $request = new ServerRequest('https://example.com/data.json')->withAttribute('site', $site);
+        $request = (new ServerRequest('https://example.com/data.json'))->withAttribute('site', $site);
 
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->method('handle')->willReturn(
-            new Response()->withHeader('Content-Type', 'application/json'),
+            (new Response())->withHeader('Content-Type', 'application/json'),
         );
 
         $response = $this->middleware->process($request, $handler);
@@ -80,7 +80,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     public function servesMcpDiscoveryWithoutCallingTheHandler(): void
     {
         $site = $this->site();
-        $request = new ServerRequest('https://example.com/.well-known/mcp.json')->withAttribute('site', $site);
+        $request = (new ServerRequest('https://example.com/.well-known/mcp.json'))->withAttribute('site', $site);
 
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
@@ -99,7 +99,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     public function servesApiCatalogWithRfc9727Profile(): void
     {
         $site = $this->site();
-        $request = new ServerRequest('https://example.com/.well-known/api-catalog')->withAttribute('site', $site);
+        $request = (new ServerRequest('https://example.com/.well-known/api-catalog'))->withAttribute('site', $site);
 
         $response = $this->middleware->process($request, $this->createMock(RequestHandlerInterface::class));
 
@@ -114,7 +114,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         $this->activateMcpServer(true);
 
         $site = $this->site();
-        $request = new ServerRequest('https://example.com/auth.md')->withAttribute('site', $site);
+        $request = (new ServerRequest('https://example.com/auth.md'))->withAttribute('site', $site);
 
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
@@ -144,7 +144,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         // would point agents at 404s, so the request must fall through.
         $this->activateMcpServer(false);
 
-        $request = new ServerRequest('https://example.com/auth.md')->withAttribute('site', $this->site());
+        $request = (new ServerRequest('https://example.com/auth.md'))->withAttribute('site', $this->site());
 
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::once())->method('handle')->willReturn(new Response());
@@ -160,7 +160,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         $this->activateExtensions([]);
 
         foreach (['/.well-known/ard.json', '/.well-known/ai-catalog.json'] as $path) {
-            $request = new ServerRequest('https://example.com' . $path)->withAttribute('site', $this->site());
+            $request = (new ServerRequest('https://example.com' . $path))->withAttribute('site', $this->site());
 
             $handler = $this->createMock(RequestHandlerInterface::class);
             $handler->expects(self::never())->method('handle');
@@ -308,7 +308,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
             'languages' => [],
         ]);
 
-        $request = new ServerRequest('https://example.com/.well-known/ard.json')->withAttribute('site', $site);
+        $request = (new ServerRequest('https://example.com/.well-known/ard.json'))->withAttribute('site', $site);
 
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
@@ -322,11 +322,11 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
 
     private function handleHtmlPage(): ResponseInterface
     {
-        $request = new ServerRequest('https://example.com/some-page')->withAttribute('site', $this->site());
+        $request = (new ServerRequest('https://example.com/some-page'))->withAttribute('site', $this->site());
 
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->method('handle')->willReturn(
-            new Response()->withHeader('Content-Type', 'text/html; charset=utf-8'),
+            (new Response())->withHeader('Content-Type', 'text/html; charset=utf-8'),
         );
 
         return $this->middleware->process($request, $handler);

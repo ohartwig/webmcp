@@ -175,7 +175,7 @@ final class SiteConfigurationProviderTest extends TestCase
         $siteFinder = $this->createMock(SiteFinder::class);
         $siteFinder->method('getSiteByIdentifier')->willReturn($site);
 
-        return new SiteConfigurationProvider($siteFinder)->getSettings('demo');
+        return (new SiteConfigurationProvider($siteFinder))->getSettings('demo');
     }
 
     /**
@@ -186,6 +186,6 @@ final class SiteConfigurationProviderTest extends TestCase
         $siteFinder = $this->createMock(SiteFinder::class);
         $siteFinder->method('getSiteByIdentifier')->willThrowException(new SiteNotFoundException());
 
-        return new SiteConfigurationProvider($siteFinder)->getSettings($identifier);
+        return (new SiteConfigurationProvider($siteFinder))->getSettings($identifier);
     }
 }
