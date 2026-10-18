@@ -3,6 +3,12 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.8](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.7...v1.6.8) (2026-10-18)
+
+### :bug: Fixes
+
+* admit PHP 8.3 and test the floor on it ([837b198](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/837b19812dae0c7353f0bc640d40cf209ee19e42))
+
 ## [1.6.7](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.5...v1.6.7) (2026-10-16)
 
 ### :bug: Fixes
