@@ -28,7 +28,7 @@ final class PortAdapterTest extends TestCase
             ->method('error')
             ->with('tool invocation failed', ['tool' => 'search', 'reason' => 'timeout']);
 
-        new PsrErrorLogger($logger)->error('tool invocation failed', ['tool' => 'search', 'reason' => 'timeout']);
+        (new PsrErrorLogger($logger))->error('tool invocation failed', ['tool' => 'search', 'reason' => 'timeout']);
     }
 
     #[Test]
@@ -37,7 +37,7 @@ final class PortAdapterTest extends TestCase
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('error')->with('something broke', []);
 
-        new PsrErrorLogger($logger)->error('something broke');
+        (new PsrErrorLogger($logger))->error('something broke');
     }
 
     /**
@@ -53,6 +53,6 @@ final class PortAdapterTest extends TestCase
         $psr = $this->createMock(PsrEventDispatcherInterface::class);
         $psr->expects(self::once())->method('dispatch')->with($given)->willReturn($returned);
 
-        self::assertSame($returned, new PsrEventDispatcher($psr)->dispatch($given));
+        self::assertSame($returned, (new PsrEventDispatcher($psr))->dispatch($given));
     }
 }

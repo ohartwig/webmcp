@@ -2,7 +2,7 @@
 
 [![TYPO3 13.4 / 14](https://img.shields.io/badge/TYPO3-13.4%20%20--%20%2014.x-orange.svg)](https://get.typo3.org/)
 [![TYPO3 13.4 / 14](https://img.shields.io/badge/TYPO3-13.4%20%20--%20%2014.x-orange.svg)](https://get.typo3.org/)
-[![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-blue.svg)](https://php.net/)
+[![PHP 8.3+](https://img.shields.io/badge/PHP-8.3%2B-blue.svg)](https://php.net/)
 
 [Web Model Context Protocol (WebMCP)](https://webmachinelearning.github.io/webmcp/) integration for TYPO3.
 Allows AI agents to interact with TYPO3 websites in a structured way via `document.modelContext`.
@@ -251,7 +251,7 @@ Both classes are automatically discovered via `_instanceof` tags in `Services.ya
 ## Requirements
 
 - TYPO3 13.4 or 14.0
-- PHP 8.2 or higher
+- PHP 8.3 or higher
 - HTTPS (SecureContext required)
 
 ## License

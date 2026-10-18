@@ -91,7 +91,7 @@ final class ToolInvocationLoggerTest extends TestCase
             }))
             ->willReturn(0);
 
-        new ToolInvocationLogger($repository, $this->createMock(ErrorLoggerInterface::class))->purgeOlderThan(0);
+        (new ToolInvocationLogger($repository, $this->createMock(ErrorLoggerInterface::class)))->purgeOlderThan(0);
     }
 
     #[Test]
@@ -102,7 +102,7 @@ final class ToolInvocationLoggerTest extends TestCase
         $errors = $this->createMock(ErrorLoggerInterface::class);
         $errors->expects(self::once())->method('error');
 
-        self::assertSame(0, new ToolInvocationLogger($repository, $errors)->purgeOlderThan(30));
+        self::assertSame(0, (new ToolInvocationLogger($repository, $errors))->purgeOlderThan(30));
     }
 
     #[Test]
@@ -111,6 +111,6 @@ final class ToolInvocationLoggerTest extends TestCase
         $repository = $this->createMock(ToolInvocationLogRepositoryInterface::class);
         $repository->expects(self::once())->method('deleteOlderThan')->willReturn(0);
 
-        new ToolInvocationLogger($repository, $this->createMock(ErrorLoggerInterface::class))->maybePurge(30, 1);
+        (new ToolInvocationLogger($repository, $this->createMock(ErrorLoggerInterface::class)))->maybePurge(30, 1);
     }
 }
