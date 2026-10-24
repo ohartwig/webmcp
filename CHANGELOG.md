@@ -3,6 +3,13 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.9](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.8...v1.6.9) (2026-10-24)
+
+### :repeat: Chores
+
+* **deps:** refresh lock file (transitive deps, e.g. guzzle) ([ccf909f](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/ccf909f3806f5d6434ee58e17c441401235ec85e))
+* **deps:** update dependency davidanson/markdownlint-cli2 to v0.24.0 ([4969b44](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/4969b449584a8652df4a41eedf2a4f83a1415cfb))
+
 ## [1.6.8](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.7...v1.6.8) (2026-10-18)
 
 ### :bug: Fixes
