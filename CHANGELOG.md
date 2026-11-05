@@ -3,6 +3,17 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.10](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.9...v1.6.10) (2026-11-05)
+
+### :bug: Fixes
+
+* **discovery:** stop listing an A2A agent card in the ARD catalogue ([7b9dc2d](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/7b9dc2df87be086cd3a890ba1dc913d3f67f3f4b))
+
+### :repeat: Chores
+
+* **repo-templates:** sync ([d73e917](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/d73e917a889cfe8a32210380584d66c1d752283d))
+* **repo-templates:** sync ([5169f65](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/5169f65e5539cf63320d2125cc9361c1f7a32a23))
+
 ## [1.6.9](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.8...v1.6.9) (2026-10-24)
 
 ### :repeat: Chores
