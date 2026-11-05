@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\Http;
 
+use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Service\ToolRegistry;
+use Koh\WebMcp\Domain\Model\DiscoveryPath;
 use Koh\WebMcp\Domain\Model\ToolDefinition;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -19,11 +21,17 @@ use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
  * Serves agent discovery endpoints:
  * - /.well-known/mcp/server-card.json  (MCP Server Card)
  * - /.well-known/api-catalog           (RFC 9727 API Catalog)
- * - /.well-known/agent-skills/index.json (Agent Skills index)
+ * - /.well-known/agent-skills/index.json (Agent Skills Discovery v0.2.0 index)
+ * - /.well-known/agent-skills/{name}/SKILL.md (the skill artifacts it names)
  * - /.well-known/ard.json              (Agentic Resource Discovery catalogue)
  * - /.well-known/ai-catalog.json       (the same catalogue under its earlier name)
  *
  * Also adds agent-useful Link headers to all HTML responses.
+ *
+ * `/.well-known/mcp.json` is deliberately not served. No MCP specification
+ * defines that path: server cards (SEP-2127) are found through the AI
+ * Catalog / ARD manifest, and a document under a name nobody specifies can
+ * only be judged malformed by whoever probes it.
  */
 final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
 {
@@ -34,12 +42,15 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
      * what most crawlers probe first. Both are served, because a catalogue that
      * only answers under the name a client does not try is not discoverable.
      */
-    private const string ARD_PATH = '/.well-known/ard.json';
+    private const string ARD_PATH = DiscoveryPath::ARD;
 
-    private const string ARD_LEGACY_PATH = '/.well-known/ai-catalog.json';
+    private const string ARD_LEGACY_PATH = DiscoveryPath::ARD_LEGACY;
+
+    private const string AGENT_SKILLS_SCHEMA = 'https://schemas.agentskills.io/discovery/0.2.0/schema.json';
 
     public function __construct(
         private ToolRegistry $toolRegistry,
+        private ConsentCheckInterface $consentCheck,
         private ResponseFactoryInterface $responseFactory,
         private StreamFactoryInterface $streamFactory,
     ) {}
@@ -54,10 +65,10 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
         }
 
         return match (true) {
-            '/.well-known/mcp.json' === $path => $this->handleMcpDiscovery($request, $site),
             '/.well-known/mcp/server-card.json' === $path => $this->handleMcpServerCard($site),
             '/.well-known/api-catalog' === $path => $this->handleApiCatalog($site),
-            '/.well-known/agent-skills/index.json' === $path => $this->handleAgentSkillsIndex($request, $site),
+            DiscoveryPath::AGENT_SKILLS_INDEX === $path => $this->handleAgentSkillsIndex($site),
+            1 === preg_match('#^/\.well-known/agent-skills/([^/]+)/SKILL\.md$#', $path, $match) => $this->handleAgentSkillArtifact($match[1], $site),
             self::ARD_PATH === $path, self::ARD_LEGACY_PATH === $path => $this->handleArdCatalog($site),
             str_starts_with($path, '/.well-known/agent-skills/') && str_ends_with($path, '.json') => $this->handleAgentSkillDetail($path, $request, $site),
             '/.well-known/http-message-signatures-directory' === $path => $this->handleWebBotAuth(),
@@ -244,61 +255,87 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
         return array_slice($queries, 0, 5);
     }
 
-    private function handleAgentSkillsIndex(ServerRequestInterface $request, Site $site): ResponseInterface
+    /**
+     * Agent Skills Discovery v0.2.0 (cloudflare/agent-skills-discovery-rfc):
+     * every entry names a `SKILL.md` artifact this middleware serves and the
+     * SHA-256 of its exact bytes. A tool whose name is not a valid skill name
+     * is left out; with WebMCP disabled the API refuses every call, so the
+     * index is then empty rather than a list of skills that cannot work.
+     */
+    private function handleAgentSkillsIndex(Site $site): ResponseInterface
     {
-        $settings = $site->getSettings()->getAll();
-        $webmcpSettings = $settings['webmcp'] ?? [];
-        $tools = $this->toolRegistry->getTools(siteSettings: $webmcpSettings);
-
         $skills = [];
-        foreach ($tools as $tool) {
-            $skill = [
-                'name' => $tool->name,
-                'type' => 'webmcp-tool',
-                'description' => $tool->description,
+        foreach ($this->agentSkills($site) as $document) {
+            $skills[] = [
+                'name' => $document->name(),
+                'type' => 'skill-md',
+                'description' => $document->description(),
+                'url' => sprintf(DiscoveryPath::AGENT_SKILL_MD, $document->name()),
+                'digest' => $document->digest(),
             ];
-            if (null !== $tool->title && '' !== trim($tool->title)) {
-                $skill['title'] = $tool->title;
-            }
-            $skills[] = $skill;
         }
 
-        $index = [
-            '$schema' => 'https://schemas.agentskills.io/discovery/0.2.0/schema.json',
+        return $this->withCors($this->jsonResponse([
+            '$schema' => self::AGENT_SKILLS_SCHEMA,
             'skills' => $skills,
-        ];
-
-        return $this->jsonResponse($index, 200, 'application/json');
+        ], 200, 'application/json'));
     }
 
-    private function handleMcpDiscovery(ServerRequestInterface $request, Site $site): ResponseInterface
+    private function handleAgentSkillArtifact(string $name, Site $site): ResponseInterface
     {
+        foreach ($this->agentSkills($site) as $document) {
+            if ($document->name() === $name) {
+                return $this->withCors(
+                    $this->responseFactory->createResponse(200)
+                        ->withHeader('Content-Type', 'text/markdown; charset=utf-8')
+                        ->withHeader('X-Content-Type-Options', 'nosniff')
+                        ->withHeader('Cache-Control', 'public, max-age=3600')
+                        ->withBody($this->streamFactory->createStream($document->render())),
+                );
+            }
+        }
+
+        return $this->responseFactory->createResponse(404)
+            ->withHeader('Content-Type', 'text/plain; charset=utf-8');
+    }
+
+    /**
+     * @return list<AgentSkillDocument>
+     */
+    private function agentSkills(Site $site): array
+    {
+        $webmcpSettings = $site->getSettings()->getAll()['webmcp'] ?? [];
+        if (!is_array($webmcpSettings) || !((bool) ($webmcpSettings['enabled'] ?? false))) {
+            return [];
+        }
+
         $base = rtrim((string) $site->getBase(), '/');
-        $settings = $site->getSettings()->getAll();
-        $webmcpSettings = $settings['webmcp'] ?? [];
-        $tools = $this->toolRegistry->getTools(siteSettings: $webmcpSettings);
-
-        // Per W3C WebMCP Community Draft: tool manifest includes name,
-        // description, inputSchema, optional title, and annotations
-        // (readOnlyHint + untrustedContentHint). Use ToolDefinition::toArray()
-        // so the discovery payload stays in sync with the JS-side manifest.
-        $toolList = array_map(static fn($t) => $t->toArray(), $tools);
-
+        $title = trim((string) ($site->getConfiguration()['websiteTitle'] ?? ''));
+        $siteTitle = '' !== $title ? $title : $site->getBase()->getHost();
         $apiBasePath = $webmcpSettings['apiBasePath'] ?? '/_webmcp/api';
 
-        $discovery = [
-            'mcp' => [
-                'name' => $site->getIdentifier(),
-                'version' => self::WEBMCP_VERSION,
-                'transport' => [
-                    'type' => 'streamable_http',
-                    'endpoint' => $base . $apiBasePath,
-                ],
-                'tools' => $toolList,
-            ],
-        ];
+        $documents = [];
+        foreach ($this->toolRegistry->getTools(siteSettings: $webmcpSettings) as $tool) {
+            if (!AgentSkillDocument::isPublishable($tool)) {
+                continue;
+            }
+            $documents[] = new AgentSkillDocument(
+                tool: $tool,
+                siteTitle: $siteTitle,
+                baseUrl: $base,
+                apiBasePath: is_string($apiBasePath) ? $apiBasePath : '/_webmcp/api',
+                consent: $this->consentCheck->getConsentRequirement($tool->name, $webmcpSettings),
+            );
+        }
 
-        return $this->jsonResponse($discovery, 200, 'application/json');
+        return $documents;
+    }
+
+    private function withCors(ResponseInterface $response): ResponseInterface
+    {
+        // Public, read-only documents: the spec asks for CORS so that
+        // browser-based clients can read them.
+        return $response->withHeader('Access-Control-Allow-Origin', '*');
     }
 
     private function handleAgentSkillDetail(string $path, ServerRequestInterface $request, Site $site): ResponseInterface

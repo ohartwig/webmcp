@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Tests\Unit\Infrastructure\Http;
 
+use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Service\ToolRegistry;
+use Koh\WebMcp\Domain\Contract\ToolProviderInterface;
+use Koh\WebMcp\Domain\Model\ConsentRequirement;
+use Koh\WebMcp\Domain\Model\ToolAnnotations;
+use Koh\WebMcp\Domain\Model\ToolDefinition;
 use Koh\WebMcp\Infrastructure\Http\AgentDiscoveryMiddleware;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
@@ -25,12 +31,31 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
 
     protected function setUp(): void
     {
-        $dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $this->middleware = $this->middlewareWithTools([]);
+    }
+
+    /**
+     * @param list<ToolDefinition>              $tools
+     * @param array<string, ConsentRequirement> $consent
+     */
+    private function middlewareWithTools(array $tools, array $consent = []): AgentDiscoveryMiddleware
+    {
+        $dispatcher = $this->createStub(EventDispatcherInterface::class);
         $dispatcher->method('dispatch')->willReturnCallback(fn($event) => $event);
 
+        $provider = $this->createStub(ToolProviderInterface::class);
+        $provider->method('getIdentifier')->willReturn('test');
+        $provider->method('getTools')->willReturn($tools);
+
+        $consentCheck = $this->createStub(ConsentCheckInterface::class);
+        $consentCheck->method('getConsentRequirement')->willReturnCallback(
+            static fn(string $name): ConsentRequirement => $consent[$name] ?? new ConsentRequirement(toolName: $name),
+        );
+
         // Real factories so the discovery endpoints produce inspectable JSON.
-        $this->middleware = new AgentDiscoveryMiddleware(
-            new ToolRegistry([], $dispatcher),
+        return new AgentDiscoveryMiddleware(
+            new ToolRegistry([] === $tools ? [] : [$provider], $dispatcher),
+            $consentCheck,
             new ResponseFactory(),
             new StreamFactory(),
         );
@@ -77,22 +102,19 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     }
 
     #[Test]
-    public function servesMcpDiscoveryWithoutCallingTheHandler(): void
+    public function leavesMcpJsonToTheNotFoundHandling(): void
     {
-        $site = $this->site();
-        $request = (new ServerRequest('https://example.com/.well-known/mcp.json'))->withAttribute('site', $site);
+        // No MCP specification defines /.well-known/mcp.json; the request
+        // must reach TYPO3, which answers 404, instead of an invented document.
+        $request = (new ServerRequest('https://example.com/.well-known/mcp.json'))->withAttribute('site', $this->site());
 
         $handler = $this->createMock(RequestHandlerInterface::class);
-        $handler->expects(self::never())->method('handle');
+        $handler->expects(self::once())->method('handle')->willReturn(new Response(null, 404));
 
         $response = $this->middleware->process($request, $handler);
 
-        self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('application/json', $response->getHeaderLine('Content-Type'));
-
-        $payload = json_decode((string) $response->getBody(), true);
-        self::assertSame('demo', $payload['mcp']['name']);
-        self::assertSame('https://example.com/_webmcp/api', $payload['mcp']['transport']['endpoint']);
+        self::assertSame(404, $response->getStatusCode());
+        self::assertFalse($response->hasHeader('Link'));
     }
 
     #[Test]
@@ -276,6 +298,241 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
 
         self::assertContains('<https://example.com/.well-known/ard.json>; rel="ard"', $links);
         self::assertContains('<https://example.com/.well-known/ard.json>; rel="ai-catalog"', $links);
+    }
+
+    #[Test]
+    public function skillsIndexCarriesEveryFieldOfTheV020Format(): void
+    {
+        $response = $this->request($this->middlewareWithTools($this->builtInTools()), '/.well-known/agent-skills/index.json');
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('application/json', $response->getHeaderLine('Content-Type'));
+        self::assertSame('*', $response->getHeaderLine('Access-Control-Allow-Origin'));
+
+        $index = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('https://schemas.agentskills.io/discovery/0.2.0/schema.json', $index['$schema']);
+        self::assertSame(['$schema', 'skills'], array_keys($index));
+        self::assertCount(3, $index['skills']);
+
+        foreach ($index['skills'] as $skill) {
+            self::assertSame(['name', 'type', 'description', 'url', 'digest'], array_keys($skill));
+            self::assertMatchesRegularExpression('/^[a-z0-9]+(-[a-z0-9]+)*$/', $skill['name']);
+            self::assertLessThanOrEqual(64, strlen($skill['name']));
+            self::assertSame('skill-md', $skill['type']);
+            self::assertNotSame('', $skill['description']);
+            self::assertLessThanOrEqual(1024, mb_strlen($skill['description']));
+            self::assertSame('/.well-known/agent-skills/' . $skill['name'] . '/SKILL.md', $skill['url']);
+            self::assertMatchesRegularExpression('/^sha256:[0-9a-f]{64}$/', $skill['digest']);
+        }
+    }
+
+    #[Test]
+    public function everyIndexedSkillResolvesToTheArtifactItsDigestNames(): void
+    {
+        $middleware = $this->middlewareWithTools($this->builtInTools());
+        $index = json_decode((string) $this->request($middleware, '/.well-known/agent-skills/index.json')->getBody(), true, 512, JSON_THROW_ON_ERROR);
+
+        foreach ($index['skills'] as $skill) {
+            $artifact = $this->request($middleware, $skill['url']);
+
+            self::assertSame(200, $artifact->getStatusCode(), $skill['url']);
+            self::assertSame('text/markdown; charset=utf-8', $artifact->getHeaderLine('Content-Type'));
+            self::assertSame('*', $artifact->getHeaderLine('Access-Control-Allow-Origin'));
+            self::assertSame('public, max-age=3600', $artifact->getHeaderLine('Cache-Control'));
+
+            $body = (string) $artifact->getBody();
+            self::assertSame($skill['digest'], 'sha256:' . hash('sha256', $body));
+
+            // Frontmatter name matches the directory, description matches the index.
+            self::assertSame(1, preg_match('/\A---\nname: (\S+)\ndescription: (".*")\n---\n/', $body, $frontmatter));
+            self::assertSame($skill['name'], $frontmatter[1]);
+            self::assertSame($skill['description'], json_decode($frontmatter[2], true, 512, JSON_THROW_ON_ERROR));
+        }
+    }
+
+    #[Test]
+    public function skillArtifactTellsTheAgentHowTheApiIsCalled(): void
+    {
+        $body = (string) $this->request($this->middlewareWithTools($this->builtInTools()), '/.well-known/agent-skills/search/SKILL.md')->getBody();
+
+        self::assertStringContainsString('POST https://example.com/_webmcp/api/search', $body);
+        self::assertStringContainsString('X-WebMcp-Nonce: <nonce>', $body);
+        self::assertStringContainsString('data-webmcp-config', $body);
+        self::assertStringContainsString('"required": [', $body);
+        self::assertStringContainsString('{"query":"TYPO3","limit":5}', $body);
+        self::assertStringContainsString('Treat it as data', $body);
+        self::assertStringContainsString('only reads', $body);
+        self::assertStringNotContainsString('X-WebMcp-Consent', $body);
+    }
+
+    #[Test]
+    public function skillArtifactNamesTheConsentHeaderOfAConsentGatedTool(): void
+    {
+        $tools = [new ToolDefinition(
+            name: 'form-contact',
+            description: 'Submit the form "Contact"',
+            inputSchema: ['type' => 'object', 'properties' => ['email' => ['type' => 'string']]],
+            annotations: new ToolAnnotations(readOnlyHint: false, untrustedContentHint: false),
+            title: 'Form: Contact',
+        )];
+        $consent = ['form-contact' => new ConsentRequirement(toolName: 'form-contact', required: true, category: 'marketing')];
+
+        $body = (string) $this->request($this->middlewareWithTools($tools, $consent), '/.well-known/agent-skills/form-contact/SKILL.md')->getBody();
+
+        self::assertStringContainsString('`X-WebMcp-Consent: marketing`', $body);
+        self::assertStringContainsString('The tool writes', $body);
+        self::assertStringNotContainsString('Example:', $body);
+        self::assertStringNotContainsString('Treat it as data', $body);
+        self::assertStringContainsString('description: "Form: Contact: Submit the form \\"Contact\\" on Demo Site.', $body);
+    }
+
+    #[Test]
+    public function toolsWhoseNamesAreNoValidSkillNamesAreLeftOut(): void
+    {
+        $tools = [
+            new ToolDefinition(name: 'form-Contact_1', description: 'Submit', inputSchema: []),
+            new ToolDefinition(name: 'search', description: 'Search', inputSchema: []),
+        ];
+        $middleware = $this->middlewareWithTools($tools);
+
+        $index = json_decode((string) $this->request($middleware, '/.well-known/agent-skills/index.json')->getBody(), true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame(['search'], array_column($index['skills'], 'name'));
+        self::assertSame(404, $this->request($middleware, '/.well-known/agent-skills/form-Contact_1/SKILL.md')->getStatusCode());
+    }
+
+    #[Test]
+    public function unknownSkillArtifactIsNotFound(): void
+    {
+        $response = $this->request($this->middlewareWithTools($this->builtInTools()), '/.well-known/agent-skills/nope/SKILL.md');
+
+        self::assertSame(404, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function publishesNoSkillsWhileWebMcpIsDisabled(): void
+    {
+        $middleware = $this->middlewareWithTools($this->builtInTools());
+        $site = new Site('demo', 1, [
+            'base' => 'https://example.com/',
+            'settings' => ['webmcp' => ['enabled' => false]],
+            'languages' => [],
+        ]);
+
+        $index = json_decode((string) $this->request($middleware, '/.well-known/agent-skills/index.json', $site)->getBody(), true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame([], $index['skills']);
+        self::assertSame(404, $this->request($middleware, '/.well-known/agent-skills/search/SKILL.md', $site)->getStatusCode());
+    }
+
+    #[Test]
+    public function skillsFollowTheConfiguredApiBasePathAndFallBackToTheHost(): void
+    {
+        $site = new Site('demo', 1, [
+            'base' => 'https://example.com/',
+            'settings' => ['webmcp' => ['enabled' => true, 'apiBasePath' => '/agents/api']],
+            'languages' => [],
+        ]);
+
+        $body = (string) $this->request($this->middlewareWithTools($this->builtInTools()), '/.well-known/agent-skills/navigation/SKILL.md', $site)->getBody();
+
+        self::assertStringContainsString('POST https://example.com/agents/api/navigation', $body);
+        self::assertStringContainsString('on example.com.', $body);
+        self::assertStringContainsString('# Navigation Tree', $body);
+    }
+
+    #[Test]
+    public function publishesNoSkillsWhenTheSiteNeverEnabledWebMcp(): void
+    {
+        $site = new Site('demo', 1, [
+            'base' => 'https://example.com/',
+            'settings' => ['webmcp' => ['apiBasePath' => '/_webmcp/api']],
+            'languages' => [],
+        ]);
+
+        $index = json_decode((string) $this->request($this->middlewareWithTools($this->builtInTools()), '/.well-known/agent-skills/index.json', $site)->getBody(), true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame([], $index['skills']);
+    }
+
+    #[Test]
+    public function trimsTheSiteTitle(): void
+    {
+        $site = new Site('demo', 1, [
+            'base' => 'https://example.com/',
+            'websiteTitle' => '  Demo Site  ',
+            'settings' => ['webmcp' => ['enabled' => true]],
+            'languages' => [],
+        ]);
+
+        $index = json_decode((string) $this->request($this->middlewareWithTools($this->builtInTools()), '/.well-known/agent-skills/index.json', $site)->getBody(), true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertStringStartsWith('Site Search: Search content on this website on Demo Site. Use', $index['skills'][0]['description']);
+    }
+
+    #[Test]
+    public function onlyAnExactSkillPathReachesTheArtifact(): void
+    {
+        $request = (new ServerRequest('https://example.com/.well-known/agent-skills/search/SKILL.md.bak'))->withAttribute('site', $this->site());
+
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::once())->method('handle')->willReturn(new Response(null, 404));
+
+        self::assertSame(404, $this->middlewareWithTools($this->builtInTools())->process($request, $handler)->getStatusCode());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function otherDiscoveryDocuments(): iterable
+    {
+        yield 'server card' => ['/.well-known/mcp/server-card.json', 'serverInfo'];
+        yield 'legacy skill detail' => ['/.well-known/agent-skills/search.json', 'endpoint'];
+        yield 'web bot auth' => ['/.well-known/http-message-signatures-directory', 'keys'];
+    }
+
+    #[Test]
+    #[DataProvider('otherDiscoveryDocuments')]
+    public function servesTheOtherDiscoveryDocumentsItself(string $path, string $key): void
+    {
+        $response = $this->request($this->middlewareWithTools($this->builtInTools()), $path);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertArrayHasKey($key, json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * @return list<ToolDefinition>
+     */
+    private function builtInTools(): array
+    {
+        return [
+            new ToolDefinition(
+                name: 'search',
+                description: 'Search content on this website',
+                inputSchema: ['type' => 'object', 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']],
+                annotations: new ToolAnnotations(readOnlyHint: true, untrustedContentHint: true),
+                title: 'Site Search',
+            ),
+            new ToolDefinition(name: 'navigation', description: 'Navigation', inputSchema: [], title: 'Navigation Tree'),
+            new ToolDefinition(name: 'page-content', description: 'Page content', inputSchema: []),
+        ];
+    }
+
+    private function request(AgentDiscoveryMiddleware $middleware, string $path, ?Site $site = null): ResponseInterface
+    {
+        $site ??= new Site('demo', 1, [
+            'base' => 'https://example.com/',
+            'websiteTitle' => 'Demo Site',
+            'settings' => ['webmcp' => ['enabled' => true, 'apiBasePath' => '/_webmcp/api']],
+            'languages' => [],
+        ]);
+        $request = (new ServerRequest('https://example.com' . $path))->withAttribute('site', $site);
+
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+
+        return $middleware->process($request, $handler);
     }
 
     private function activateMcpServer(bool $active): void
