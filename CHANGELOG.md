@@ -3,6 +3,12 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.6.11](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.10...v1.6.11) (2026-11-05)
+
+### :bug: Fixes
+
+* **discovery:** make agent skills, MCP and ARD discovery spec-conformant ([5645506](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/564550648420bcf4f88d0bc9deacbb842bf2f06c))
+
 ## [1.6.10](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.9...v1.6.10) (2026-11-05)
 
 ### :bug: Fixes
