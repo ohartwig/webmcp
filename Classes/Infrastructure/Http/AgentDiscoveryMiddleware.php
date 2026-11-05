@@ -53,6 +53,7 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
         private ConsentCheckInterface $consentCheck,
         private ResponseFactoryInterface $responseFactory,
         private StreamFactoryInterface $streamFactory,
+        private A2aAgentCard $a2aAgentCard = new A2aAgentCard(),
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -137,9 +138,9 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
      *
      * Entries are built from what this installation actually serves — a
      * catalogue that promises an endpoint returning 404 is worse than a
-     * shorter one, because the agent has already spent the request. There is
-     * no A2A entry: no extension here serves an A2A endpoint, and a valid A2A
-     * card needs at least one interface, so none is published.
+     * shorter one, because the agent has already spent the request. The A2A
+     * Agent Card is listed exactly when business-agent serves it for this
+     * site (see A2aAgentCard).
      */
     private function handleArdCatalog(Site $site): ResponseInterface
     {
@@ -162,6 +163,17 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
             description: 'Read access to this site\'s content over the Model Context Protocol.',
             representativeQueries: $queries,
         );
+
+        if ($this->a2aAgentCard->isServedFor($site)) {
+            $entries[] = $this->ardEntry(
+                identifier: 'urn:air:' . $publisher . ':agent:a2a',
+                displayName: $title . ' Agent',
+                type: 'application/a2a-agent-card+json',
+                url: $this->a2aAgentCard->url($site),
+                description: 'A2A Agent Card of the agent that searches this site\'s published pages.',
+                representativeQueries: $queries,
+            );
+        }
 
         $entries[] = $this->ardEntry(
             identifier: 'urn:air:' . $publisher . ':api:catalog',
