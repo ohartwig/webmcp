@@ -3,6 +3,20 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.8.0](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.7.0...v1.8.0) (2026-11-05)
+
+### :sparkles: Features
+
+* **discovery:** list the A2A agent card in the ARD catalogue where it is served ([ea845d4](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/ea845d44f6a3185927e7a6bd5c34f40bdc95d6af))
+
+### :white_check_mark: Tests
+
+* **discovery:** keep the A2A card test parseable on the PHP 8.3 floor ([dfd52bb](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/dfd52bbedee1ae30d36b8f22606cf4056dd8a7d2))
+
+### :repeat: Chores
+
+* **deps:** refresh lock file (transitive deps, e.g. guzzle) ([4c7468f](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/4c7468ff0ba6031e47d1b951487457c317b49641))
+
 ## [1.7.0](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.11...v1.7.0) (2026-11-05)
 
 ### :sparkles: Features
