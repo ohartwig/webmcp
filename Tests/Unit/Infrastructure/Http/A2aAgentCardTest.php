@@ -19,21 +19,21 @@ final class A2aAgentCardTest extends TestCase
         $withSet = self::site('https://example.com/', ['businessAgent' => ['agent' => ['name' => 'A']]]);
 
         $this->activate(['business_agent']);
-        self::assertTrue(new A2aAgentCard(\stdClass::class)->isServedFor($withSet));
-        self::assertTrue(new A2aAgentCard(\stdClass::class)->isServedFor(self::site('https://example.com/', ['businessAgent' => []])));
-        self::assertFalse(new A2aAgentCard(\stdClass::class)->isServedFor(self::site('https://example.com/', [])));
-        self::assertFalse(new A2aAgentCard(\stdClass::class)->isServedFor(self::site('https://example.com/', ['businessAgent' => 'on'])));
-        self::assertFalse(new A2aAgentCard()->isServedFor($withSet));
+        self::assertTrue((new A2aAgentCard(\stdClass::class))->isServedFor($withSet));
+        self::assertTrue((new A2aAgentCard(\stdClass::class))->isServedFor(self::site('https://example.com/', ['businessAgent' => []])));
+        self::assertFalse((new A2aAgentCard(\stdClass::class))->isServedFor(self::site('https://example.com/', [])));
+        self::assertFalse((new A2aAgentCard(\stdClass::class))->isServedFor(self::site('https://example.com/', ['businessAgent' => 'on'])));
+        self::assertFalse((new A2aAgentCard())->isServedFor($withSet));
 
         $this->activate([]);
-        self::assertFalse(new A2aAgentCard(\stdClass::class)->isServedFor($withSet));
+        self::assertFalse((new A2aAgentCard(\stdClass::class))->isServedFor($withSet));
     }
 
     #[Test]
     public function theCardIsAtTheWellKnownPathOfTheHost(): void
     {
-        self::assertSame('https://example.com/.well-known/agent-card.json', new A2aAgentCard()->url(self::site('https://example.com/', [])));
-        self::assertSame('https://example.com/.well-known/agent-card.json', new A2aAgentCard()->url(self::site('https://example.com/de/?x=1', [])));
+        self::assertSame('https://example.com/.well-known/agent-card.json', (new A2aAgentCard())->url(self::site('https://example.com/', [])));
+        self::assertSame('https://example.com/.well-known/agent-card.json', (new A2aAgentCard())->url(self::site('https://example.com/de/?x=1', [])));
     }
 
     /**
