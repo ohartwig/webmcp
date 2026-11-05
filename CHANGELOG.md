@@ -3,6 +3,12 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.7.0](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.11...v1.7.0) (2026-11-05)
+
+### :sparkles: Features
+
+* **auth-md:** describe the auth.md v0.6.0 anonymous ceremony in /auth.md ([6e23b7a](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/6e23b7aedd3e3af4c1769dda7ff78c09adbda037))
+
 ## [1.6.11](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.6.10...v1.6.11) (2026-11-05)
 
 ### :bug: Fixes
