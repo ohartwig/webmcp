@@ -10,6 +10,7 @@ use Koh\WebMcp\Domain\Contract\ToolProviderInterface;
 use Koh\WebMcp\Domain\Model\ConsentRequirement;
 use Koh\WebMcp\Domain\Model\ToolAnnotations;
 use Koh\WebMcp\Domain\Model\ToolDefinition;
+use Koh\WebMcp\Infrastructure\Http\A2aAgentCard;
 use Koh\WebMcp\Infrastructure\Http\AgentDiscoveryMiddleware;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -215,18 +216,67 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     }
 
     /**
-     * Every entry has to be reachable. No extension serves an A2A endpoint, and
-     * business_agent no longer publishes an agent card, so the catalogue must
-     * not name one even with that extension loaded — it would be a 404.
+     * Every entry has to be reachable. The A2A card is business-agent's, and
+     * it serves one only from the version with an A2A endpoint on, and only on
+     * sites that apply its site set. Listed in any other case, the entry is a
+     * 404 the agent has already paid for.
+     *
+     * @return iterable<string, array{list<string>, class-string|string, array<string, mixed>, bool}>
+     */
+    public static function a2aCardConditions(): iterable
+    {
+        $agent = ['businessAgent' => ['agent' => ['name' => 'Assistent']]];
+
+        yield 'served' => [['business_agent'], \stdClass::class, $agent, true];
+        yield 'extension not loaded' => [[], \stdClass::class, $agent, false];
+        yield 'a version without the A2A endpoint' => [['business_agent'], 'Koh\\BusinessAgent\\Missing\\AgentCardFactory', $agent, false];
+        yield 'site without the Business Agent site set' => [['business_agent'], \stdClass::class, [], false];
+    }
+
+    /**
+     * @param list<string>         $extensions
+     * @param array<string, mixed> $siteSettings
      */
     #[Test]
-    public function neverListsAnA2aCard(): void
+    #[DataProvider('a2aCardConditions')]
+    public function listsTheA2aCardExactlyWhenBusinessAgentServesIt(array $extensions, string $cardFactoryClass, array $siteSettings, bool $listed): void
+    {
+        $this->activateExtensions($extensions);
+        $this->middleware = $this->middlewareWithA2aCard($cardFactoryClass);
+
+        $entries = array_column($this->ardCatalog([], $siteSettings)['entries'], null, 'identifier');
+
+        self::assertSame($listed, isset($entries['urn:air:example.com:agent:a2a']));
+        self::assertSame($listed, in_array('https://example.com/.well-known/agent-card.json', array_column($entries, 'url'), true));
+    }
+
+    #[Test]
+    public function theA2aEntryNamesTheCardByItsArdType(): void
     {
         $this->activateExtensions(['business_agent']);
-        $entries = $this->ardCatalog()['entries'];
+        $this->middleware = $this->middlewareWithA2aCard(\stdClass::class);
 
-        self::assertNotContains('https://example.com/.well-known/agent-card.json', array_column($entries, 'url'));
-        self::assertNotContains('application/a2a-agent-card+json', array_column($entries, 'type'));
+        $entries = array_column($this->ardCatalog([], ['businessAgent' => []])['entries'], null, 'identifier');
+
+        self::assertSame([
+            'identifier' => 'urn:air:example.com:agent:a2a',
+            'displayName' => 'demo Agent',
+            'type' => 'application/a2a-agent-card+json',
+            'url' => 'https://example.com/.well-known/agent-card.json',
+            'description' => 'A2A Agent Card of the agent that searches this site\'s published pages.',
+        ], $entries['urn:air:example.com:agent:a2a']);
+    }
+
+    #[Test]
+    public function theCurrentBusinessAgentWithoutA2aIsNotListed(): void
+    {
+        // The default probe looks for business-agent's card factory, which
+        // this package's own test environment does not have installed.
+        $this->activateExtensions(['business_agent']);
+
+        $types = array_column($this->ardCatalog([], ['businessAgent' => []])['entries'], 'type');
+
+        self::assertNotContains('application/a2a-agent-card+json', $types);
     }
 
     /**
@@ -292,10 +342,11 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     public function carriesRepresentativeQueriesOnlyOnTheInvocableResources(): void
     {
         $this->activateExtensions(['business_agent']);
+        $this->middleware = $this->middlewareWithA2aCard(\stdClass::class);
 
         $catalog = $this->ardCatalog([
             'ard' => ['representativeQueries' => 'wie erreiche ich euch'],
-        ]);
+        ], ['businessAgent' => []]);
 
         $withQueries = [];
         foreach ($catalog['entries'] as $entry) {
@@ -305,7 +356,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         }
 
         self::assertSame(
-            ['urn:air:example.com:server:mcp'],
+            ['urn:air:example.com:server:mcp', 'urn:air:example.com:agent:a2a'],
             $withQueries,
         );
     }
@@ -538,6 +589,17 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         ];
     }
 
+    private function middlewareWithA2aCard(string $cardFactoryClass): AgentDiscoveryMiddleware
+    {
+        return new AgentDiscoveryMiddleware(
+            new ToolRegistry([], $this->createStub(EventDispatcherInterface::class)),
+            $this->createStub(ConsentCheckInterface::class),
+            new ResponseFactory(),
+            new StreamFactory(),
+            new A2aAgentCard($cardFactoryClass),
+        );
+    }
+
     private function request(AgentDiscoveryMiddleware $middleware, string $path, ?Site $site = null): ResponseInterface
     {
         $site ??= new Site('demo', 1, [
@@ -573,12 +635,13 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
 
     /**
      * @param array<string, mixed> $webmcpSettings
+     * @param array<string, mixed> $siteSettings   further site settings, such as another extension's
      */
-    private function ardCatalog(array $webmcpSettings = []): array
+    private function ardCatalog(array $webmcpSettings = [], array $siteSettings = []): array
     {
         $site = new Site('demo', 1, [
             'base' => 'https://example.com/',
-            'settings' => ['webmcp' => ['enabled' => true, 'apiBasePath' => '/_webmcp/api'] + $webmcpSettings],
+            'settings' => ['webmcp' => ['enabled' => true, 'apiBasePath' => '/_webmcp/api'] + $webmcpSettings] + $siteSettings,
             'languages' => [],
         ]);
 
