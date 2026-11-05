@@ -149,14 +149,33 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         // The auth.md spec keys off an H1 containing "auth.md".
         self::assertStringStartsWith('# auth.md', $body);
         // Every endpoint an agent needs must be reachable from this document alone.
-        self::assertStringContainsString('https://example.com/mcp_oauth/register', $body);
-        self::assertStringContainsString('https://example.com/mcp_oauth/agent/identity', $body);
-        // The anonymous ceremony is only honest if the document says plainly
-        // that the credential it hands out does not work yet.
-        self::assertStringContainsString('"authorized": false', $body);
-        self::assertStringContainsString('https://example.com/mcp_oauth/authorize', $body);
-        self::assertStringContainsString('https://example.com/mcp_oauth/token', $body);
-        self::assertStringContainsString('https://example.com/mcp_oauth/revoke', $body);
+        foreach ([
+            '/.well-known/oauth-authorization-server',
+            '/mcp_oauth/agent/identity',
+            '/mcp_oauth/agent/identity/claim',
+            '/mcp_oauth/token',
+            '/mcp_oauth/revoke',
+            '/mcp_oauth/jwks',
+            '/mcp_oauth/register',
+            '/mcp_oauth/authorize',
+        ] as $path) {
+            self::assertStringContainsString('https://example.com' . $path, $body, $path);
+        }
+        // The profile's own vocabulary (v0.6.0): the registration body, both
+        // grants, and the ceremony fields an agent parses.
+        self::assertStringContainsString('{"type": "anonymous"', $body);
+        self::assertStringContainsString('grant_type=urn:workos:agent-auth:grant-type:claim', $body);
+        self::assertStringContainsString('grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer', $body);
+        foreach (['claim_token', 'user_code', 'verification_uri', 'identity_assertion', 'authorization_pending', 'slow_down', 'expired_token'] as $field) {
+            self::assertStringContainsString('`' . $field . '`', $body, $field);
+        }
+        // The ceremony is only honest if the document says plainly that an
+        // unclaimed registration buys nothing.
+        self::assertStringContainsString('"pre_claim_scopes": []', $body);
+        self::assertStringContainsString('until an editor claims it,' . "\n" . 'the registration grants nothing at all', $body);
+        // Retired v0.1.0 response fields must not linger in the recipe.
+        self::assertStringNotContainsString('"authorized": false', $body);
+        self::assertStringNotContainsString('claim_uri', $body);
     }
 
     #[Test]

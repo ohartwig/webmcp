@@ -401,8 +401,10 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
     }
 
     /**
-     * auth.md (https://workos.com/auth-md) — the human- and agent-readable
-     * recipe for obtaining credentials, served from the site root.
+     * auth.md (https://github.com/workos/auth.md, profile v0.6.0) — the human-
+     * and agent-readable recipe for obtaining credentials, served from the site
+     * root. It describes the anonymous registration and claim ceremony that
+     * mcp_server implements, step for step as the profile numbers them.
      *
      * Every endpoint named here belongs to the mcp_server extension, which is
      * why this is gated on hasMcpServer(): without it the OAuth routes do not
@@ -418,97 +420,133 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
 
             Agent registration and authentication for **{$title}** ({$base}).
 
-            This document is for autonomous agents that want to call the MCP
-            endpoint at `{$base}/mcp`. Everything an agent needs is also available
-            as machine-readable metadata:
+            This service follows the auth.md profile, version 0.6.0
+            (https://github.com/workos/auth.md). It is for autonomous agents that
+            want to call the MCP endpoint at `{$base}/mcp`. Follow the steps in
+            order.
+
+            ## Step 1 — Discover
 
             - `{$base}/.well-known/oauth-protected-resource` — the protected resource
-            - `{$base}/.well-known/oauth-authorization-server` — endpoints and the `agent_auth` block
+            - `{$base}/.well-known/oauth-authorization-server` — `token_endpoint`,
+              `revocation_endpoint`, `grant_types_supported`, `jwks_uri` and the
+              `agent_auth` block (`identity_endpoint`, `claim_endpoint`,
+              `identity_types_supported`)
 
-            ## Audience
+            ## Step 2 — Pick a method
 
-            The protected resource is `{$base}/mcp`. An agent may obtain an
-            **identity** on its own, before anyone has vouched for it. What it may
-            **do** is a separate question: every token traces back to a human editor
-            of this site and is bounded by that editor's permissions.
+            Only `anonymous` is offered. There is no trusted ID-JAG provider and no
+            `service_auth`; both answer `issuer_not_enabled` and
+            `service_auth_not_enabled`.
 
-            So there is no machine-only *authority* here — but there is no
-            requirement to have a human present when the agent first appears either.
+            **Every access token here traces back to a human editor of this site**
+            and is bounded by that editor's permissions. An agent may register on its
+            own, before anyone has vouched for it — but until an editor claims it,
+            the registration grants nothing at all.
 
-            ## Anonymous identity
-
-            Ask for an identity without credentials of any kind:
+            ## Step 3 — Register
 
                 POST {$base}/mcp_oauth/agent/identity
                 Content-Type: application/json
 
-                {"client_name": "Your agent"}
+                {"type": "anonymous", "client_name": "Your agent"}
 
-            The response carries `identity_id`, a bearer `credential`, a `claim_uri`
-            and `"authorized": false`. That last field is the important one: **the
-            credential grants nothing yet**. It is stored apart from access tokens
-            and the MCP endpoint cannot see it, so sending it to `/mcp` fails no
-            matter how it is formatted.
-
-            Give the claim code to a backend editor. When they claim the identity
-            in the TYPO3 backend, the agent gains an access token carrying that
-            editor's permissions — the same access the consent screen below would
-            have produced, reached in the other order.
-
-            Unclaimed identities expire after an hour, and issuing is rate-limited
-            per address. An identity nobody claims is meant to be thrown away.
-
-            ## Registration
-
-            Register as an OAuth client with RFC 7591 dynamic client registration:
-
-                POST {$base}/mcp_oauth/register
-                Content-Type: application/json
+            `client_name` is optional; the editor sees it when claiming. The response:
 
                 {
-                  "client_name": "Your agent",
-                  "redirect_uris": ["http://127.0.0.1:<port>/callback"]
+                  "registration_id": "reg_...",
+                  "registration_type": "anonymous",
+                  "pre_claim_scopes": [],
+                  "claim_url": "{$base}/mcp_oauth/agent/identity/claim",
+                  "claim_token": "clm_...",
+                  "claim_token_expires": "...",
+                  "post_claim_scopes": ["mcp:read", "mcp:write"]
                 }
 
-            Registration is open, but `redirect_uris` are restricted. Accepted are
-            loopback URIs (`127.0.0.1`, `::1`, `localhost`, any port — RFC 8252) for
-            native and local agents, and HTTPS URIs explicitly allow-listed by the
-            site operator. Any other URI is rejected with `invalid_redirect_uri`;
-            ask the operator to allow-list it rather than retrying.
+            `pre_claim_scopes` is empty, so there is **no `identity_assertion` before
+            the claim** — nothing to exchange, nothing that reaches `/mcp`. Go to
+            Step 4. Hold `claim_token` in memory; it is returned once. Unclaimed
+            registrations expire after one hour, and registering is rate-limited per
+            client address (`429 rate_limited`).
 
-            ## Authorisation
+            ## Step 4 — Claim ceremony
 
-            Run the authorization code flow. PKCE with `S256` is mandatory — a
-            request without a code challenge is rejected.
+            ### 4a. Start an attempt
 
-                GET  {$base}/mcp_oauth/authorize
-                     ?response_type=code&client_id=...&redirect_uri=...
-                     &code_challenge=...&code_challenge_method=S256
+                POST {$base}/mcp_oauth/agent/identity/claim
+                Content-Type: application/json
+
+                {"claim_token": "clm_...", "email": "editor@example.com"}
+
+            `email` is optional. When given, only the backend user with that address
+            can complete the claim. The response carries a `claim_attempt` block with
+            `user_code` (six digits), `verification_uri`, `expires_in` (600) and
+            `interval` (5).
+
+            ### 4b. Hand off to the user
+
+            > Open this link, sign in to the TYPO3 backend, and enter this code: **123456**
+
+            The editor opens `verification_uri`, signs in and types the code. The code
+            goes into that page — not back to you. Codes are single-use; five wrong
+            entries burn the attempt.
+
+            ### 4c. Poll for completion
+
                 POST {$base}/mcp_oauth/token
+                Content-Type: application/x-www-form-urlencoded
 
-            A human editor signs in and consents during the authorize step. Public
-            clients may use `token_endpoint_auth_method=none`; PKCE carries the
-            security guarantee.
+                grant_type=urn:workos:agent-auth:grant-type:claim&claim_token=clm_...
 
-            ## Using the credential
+            `authorization_pending` while waiting, `slow_down` when polling faster
+            than `interval`, `expired_token` when the code or the registration ran
+            out — then call Step 4a again with the same `claim_token`; if that
+            answers `410 claim_expired`, start over at Step 3. On success you get a
+            bearer `access_token` (`expires_in` 3600, scope `mcp:read mcp:write`)
+            plus an `identity_assertion` and `assertion_expires`. The claim token is
+            spent by that answer.
 
-            The result is a bearer access token. Send it in the header — this is the
-            only accepted position, tokens in query strings are refused:
+            ## Step 5 — Exchange the assertion
+
+            When the access token expires, exchange the `identity_assertion`
+            (RFC 7523):
+
+                POST {$base}/mcp_oauth/token
+                Content-Type: application/x-www-form-urlencoded
+
+                grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=<identity_assertion>&resource={$base}/mcp
+
+            There is no refresh token; the assertion is the refresh path. It is an
+            EdDSA-signed JWT, verifiable with the key at
+            `{$base}/mcp_oauth/jwks`. `invalid_grant` means the assertion expired or
+            the registration was revoked — start over at Step 3.
+
+            ## Step 6 — Use the access_token
 
                 Authorization: Bearer <access_token>
 
-            Declared scopes are `mcp:read` and `mcp:write`. They are informational:
-            what a token may actually do is decided by the permissions of the editor
-            who authorised it.
+            The header is the only accepted position; tokens in query strings are
+            refused. What a token may do is decided by the permissions of the editor
+            who claimed the agent.
 
             ## Revocation
 
-                POST {$base}/mcp_oauth/revoke
+            - **You**: `POST {$base}/mcp_oauth/revoke` with `token=<access_token>`
+              (RFC 7009) ends that access token only; your `identity_assertion` keeps
+              working.
+            - **The editor**: revoking the agent in the TYPO3 backend
+              ({$base}/typo3/module/user/mcp-server) ends the registration, its
+              assertion and every access token derived from it. You notice when
+              Step 5 answers `invalid_grant`; treat that as revoked-by-human.
 
-            RFC 7009. The token being revoked authenticates the call, so no client
-            secret is required. Editors can revoke agent access at any time in the
-            TYPO3 backend ({$base}/typo3/module/user/mcp-server); treat a sudden
-            `401` as revoked-by-human and stop retrying.
+            ## Interactive clients
+
+            Clients that can open a browser for the editor may instead use OAuth 2.1
+            with RFC 7591 dynamic client registration (`{$base}/mcp_oauth/register`;
+            loopback or operator-allow-listed HTTPS `redirect_uris`) and the
+            authorization code flow with mandatory PKCE `S256`
+            (`{$base}/mcp_oauth/authorize`, then `{$base}/mcp_oauth/token`). The
+            editor signs in and consents during the authorize step.
 
             MARKDOWN;
 
