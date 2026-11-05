@@ -124,10 +124,11 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
      * The ARD catalogue: one place that names every agentic resource this site
      * publishes, so an agent does not have to guess at well-known paths.
      *
-     * Entries are built from what this installation actually serves. The A2A
-     * card is only listed when the extension that answers for it is loaded —
-     * a catalogue that promises an endpoint returning 404 is worse than a
-     * shorter one, because the agent has already spent the request.
+     * Entries are built from what this installation actually serves — a
+     * catalogue that promises an endpoint returning 404 is worse than a
+     * shorter one, because the agent has already spent the request. There is
+     * no A2A entry: no extension here serves an A2A endpoint, and a valid A2A
+     * card needs at least one interface, so none is published.
      */
     private function handleArdCatalog(Site $site): ResponseInterface
     {
@@ -150,17 +151,6 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
             description: 'Read access to this site\'s content over the Model Context Protocol.',
             representativeQueries: $queries,
         );
-
-        if ($this->hasBusinessAgent()) {
-            $entries[] = $this->ardEntry(
-                identifier: 'urn:air:' . $publisher . ':agent:a2a',
-                displayName: $title . ' Agent',
-                type: 'application/a2a-agent-card+json',
-                url: $base . '/.well-known/agent-card.json',
-                description: 'Agent-to-Agent card describing what this agent can be asked to do.',
-                representativeQueries: $queries,
-            );
-        }
 
         $entries[] = $this->ardEntry(
             identifier: 'urn:air:' . $publisher . ':api:catalog',
@@ -252,11 +242,6 @@ final readonly class AgentDiscoveryMiddleware implements MiddlewareInterface
         }
 
         return array_slice($queries, 0, 5);
-    }
-
-    private function hasBusinessAgent(): bool
-    {
-        return ExtensionManagementUtility::isLoaded('business_agent');
     }
 
     private function handleAgentSkillsIndex(ServerRequestInterface $request, Site $site): ResponseInterface

@@ -174,20 +174,18 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
     }
 
     /**
-     * Every entry has to be reachable. A catalogue that names an endpoint this
-     * installation does not serve costs the agent a request and returns a 404,
-     * which is worse than a shorter catalogue.
+     * Every entry has to be reachable. No extension serves an A2A endpoint, and
+     * business_agent no longer publishes an agent card, so the catalogue must
+     * not name one even with that extension loaded — it would be a 404.
      */
     #[Test]
-    public function listsTheA2aCardOnlyWhileTheExtensionServingItIsLoaded(): void
+    public function neverListsAnA2aCard(): void
     {
-        $this->activateExtensions([]);
-        $without = array_column($this->ardCatalog()['entries'], 'url');
-        self::assertNotContains('https://example.com/.well-known/agent-card.json', $without);
-
         $this->activateExtensions(['business_agent']);
-        $with = array_column($this->ardCatalog()['entries'], 'url');
-        self::assertContains('https://example.com/.well-known/agent-card.json', $with);
+        $entries = $this->ardCatalog()['entries'];
+
+        self::assertNotContains('https://example.com/.well-known/agent-card.json', array_column($entries, 'url'));
+        self::assertNotContains('application/a2a-agent-card+json', array_column($entries, 'type'));
     }
 
     /**
@@ -266,7 +264,7 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
         }
 
         self::assertSame(
-            ['urn:air:example.com:server:mcp', 'urn:air:example.com:agent:a2a'],
+            ['urn:air:example.com:server:mcp'],
             $withQueries,
         );
     }
