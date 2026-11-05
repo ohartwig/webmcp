@@ -151,6 +151,22 @@ header after its own consent check passed, so a caller that bypasses the page ca
 bypass the gate; it is the visitor's page asserting the visitor's consent, not a proof
 the server could verify on its own.
 
+## Agent Discovery Documents
+
+The `AgentDiscoveryMiddleware` serves, for every site:
+
+| Path | Format |
+|------|--------|
+| `/.well-known/agent-skills/index.json` | [Agent Skills Discovery](https://github.com/cloudflare/agent-skills-discovery-rfc) v0.2.0 index: one `skill-md` entry per tool whose name is a valid skill name, each with the SHA-256 digest of its artifact. Empty while `webmcp.enabled` is off, because the API then refuses every call. |
+| `/.well-known/agent-skills/<name>/SKILL.md` | The skill artifact: frontmatter plus instructions for calling the tool in a WebMCP browser or over HTTPS (nonce from a rendered page, `X-WebMcp-Nonce`, input schema). |
+| `/.well-known/ard.json` (also `/.well-known/ai-catalog.json`) | [ARD](https://github.com/ards-project/ard-spec) v0.91 manifest. |
+| `/.well-known/mcp/server-card.json`, `/.well-known/api-catalog` | MCP server card and RFC 9727 API catalogue. |
+
+HTML pages carry the ARD manifest both in a `Link` header and in the head as
+`<link rel="ard">` and `<link rel="ai-catalog">`, the latter being the predecessor
+relation that some consumers still look for. `/.well-known/mcp.json` is not served:
+no MCP specification defines it.
+
 ## Audit Log and Retention
 
 Every tool call is logged to `tx_webmcp_tool_log`: tool, site, success, duration, a
