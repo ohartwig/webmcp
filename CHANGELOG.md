@@ -3,6 +3,13 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.8.1](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.0...v1.8.1) (2026-11-06)
+
+### :repeat: Chores
+
+* **deps:** refresh lock file (transitive deps, e.g. guzzle) ([ddf5774](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/ddf5774ae7e9b60d52f374641ad0553bb47c7439))
+* **repo-templates:** sync ([f71f11e](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/f71f11e8a0e968d8442bb7514af77520d4cd9267))
+
 ## [1.8.0](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.7.0...v1.8.0) (2026-11-05)
 
 ### :sparkles: Features
