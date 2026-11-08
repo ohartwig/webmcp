@@ -3,6 +3,24 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.8.2](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.1...v1.8.2) (2026-11-08)
+
+### :repeat: Chores
+
+* **deps:** refresh lock file (transitive deps, e.g. guzzle) ([88f9d87](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/88f9d879ad3a8b678f9549bee47adcd9f4333e13))
+* **repo-templates:** sync ([cdf8d1f](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/cdf8d1fb59551d1c8ccbe2bf7ff85e3c4c2106fa))
+* **repo-templates:** sync ([fc77bea](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/fc77bea32fba6ec0b5d30f86c374558f91d89cbf))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.150-8.5 ([3a98300](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/3a983005c71f434c1f8d8335e73542dda30aefff))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.149-8.5 ([155e57b](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/155e57b8447f864fe6ed251c604c7da6a047396d))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.148-8.5 ([bd34257](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/bd34257787556336ff88bdd97c858937228b7fb9))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.147-8.5 ([968db5d](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/968db5d56ea13c4f4fd76f47fa20991fd2994de2))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.146-8.5 ([9f5537b](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/9f5537b92d44560c3ac28ab2bccf1c58130e104b))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.144-8.5 ([d685bde](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/d685bde5f5a0ffbbe98d1b75e7f3bf3b42470995))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.143-8.5 ([2c423c6](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/2c423c6bc4c946d3e24f2ff83f0b5845f5e853ee))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.142-8.5 ([2230452](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/2230452923cf2a19eec9c804c996696740618d51))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.139-8.5 ([c16c0a6](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/c16c0a65a11d12c809ca248089f8f1b2f297e4a2))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.138-8.5 ([6375845](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/637584503e3cd6463893ec0e9831aa257bd42276))
+
 ## [1.8.1](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.0...v1.8.1) (2026-11-06)
 
 ### :repeat: Chores
