@@ -6,6 +6,8 @@ namespace Koh\WebMcp\Infrastructure\Http;
 
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Contract\LogRetentionInterface;
+use Koh\WebMcp\Application\Contract\PageAccessInterface;
+use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\InputSchemaValidator;
@@ -20,7 +22,6 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
 use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 
@@ -35,11 +36,25 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
      */
     private const string CONSENT_HEADER = 'X-WebMcp-Consent';
 
+    /**
+     * The path segment below the API base path that issues nonces. Reserved:
+     * a tool of this name could not be called.
+     */
+    public const string NONCE_ENDPOINT = 'nonce';
+
+    /**
+     * Values of `Sec-Fetch-Site` the nonce endpoint accepts. `same-origin` is
+     * the init script; `none` is a request the user started themselves. A
+     * client that sends no such header at all (curl, a server-side agent) is
+     * not a browser being steered by another site and is accepted as well.
+     */
+    private const array NONCE_FETCH_SITES = ['same-origin', 'none'];
+
     public function __construct(
         private ToolExecutionService $toolExecutionService,
         private SiteConfigurationProviderInterface $siteConfigurationProvider,
         private ToolInvocationLogger $invocationLogger,
-        private FrontendInterface $cache,
+        private NonceStore $nonceStore,
         private ResponseFactoryInterface $responseFactory,
         private StreamFactoryInterface $streamFactory,
         private ToolRegistry $toolRegistry,
@@ -47,6 +62,8 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         private RateLimiterInterface $rateLimiter,
         private InputSchemaValidator $inputSchemaValidator,
         private LogRetentionInterface $logRetention,
+        private PageAccessInterface $pageAccess,
+        private PageToolConfigurationProviderInterface $pageToolConfiguration,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -77,28 +94,20 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
             return $this->jsonResponse(['error' => 'Invalid tool name'], 400);
         }
 
+        if (self::NONCE_ENDPOINT === $toolName) {
+            return $this->issueNonce($request, $site instanceof Site ? $site : null);
+        }
+
         // Validate CSRF nonce with client fingerprint
         $nonce = $request->getHeaderLine('X-WebMcp-Nonce');
-        $nonceData = '' === $nonce ? null : $this->validateNonce($nonce, $request);
+        $nonceData = '' === $nonce ? null : $this->nonceStore->lookup($nonce, $request);
         if (null === $nonceData) {
             return $this->jsonResponse(['error' => 'Invalid or missing nonce'], 403);
         }
 
-        // Parse input with size limit
-        $body = (string) $request->getBody();
-        if (strlen($body) > self::MAX_BODY_SIZE) {
-            return $this->jsonResponse(['error' => 'Request body too large'], 413);
-        }
-        $input = [];
-        if ('' !== $body) {
-            try {
-                $input = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
-                if (!is_array($input)) {
-                    return $this->jsonResponse(['error' => 'Input must be a JSON object'], 400);
-                }
-            } catch (\JsonException) {
-                return $this->jsonResponse(['error' => 'Invalid JSON body'], 400);
-            }
+        $input = $this->parseBody($request);
+        if ($input instanceof ResponseInterface) {
+            return $input;
         }
 
         // What runs is what is advertised, decided by the same filter: the
@@ -125,9 +134,9 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         }
 
         // Rate limiting per caller and per site. Deliberately NOT per nonce
-        // (a nonce is minted on every page render, so a caller who spent its
-        // budget would simply reload) and NOT per fingerprint either: half of
-        // that was the User-Agent, a header the caller chooses.
+        // (a caller who spent its budget would simply fetch a new one) and
+        // NOT per fingerprint either: half of that was the User-Agent, a
+        // header the caller chooses.
         if (!$this->rateLimiter->allow(ClientFingerprint::ip($request), $site instanceof Site ? $site->getIdentifier() : '')) {
             return $this->jsonResponse(['error' => 'Rate limit exceeded'], 429);
         }
@@ -179,38 +188,92 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
     }
 
     /**
-     * The nonce's cache entry when the nonce is valid for this caller, else null.
+     * Issues a nonce for one page to the caller of this request.
      *
-     * @return array<string, mixed>|null
+     * The page arrives as an id in the body, and that id is all the caller
+     * decides: the page must belong to this site and be readable in the
+     * caller's frontend context, and its tool overrides are read from its
+     * page TSconfig here, never taken from the request. A body without a page
+     * id is a page cached before 1.9.0, whose configuration carries none; it
+     * gets the overrides of the site's root page.
+     *
+     * POST, not GET: issuing writes a cache entry, and neither the edge nor
+     * any other cache stores a POST. The response says `no-store, private`
+     * all the same.
      */
-    private function validateNonce(string $nonce, ServerRequestInterface $request): ?array
+    private function issueNonce(ServerRequestInterface $request, ?Site $site): ResponseInterface
     {
-        if (1 !== preg_match('/^[a-f0-9]{64}$/', $nonce)) {
-            return null;
+        // A browser tells us which site made it send the request. Another
+        // site may make a visitor's browser post here, and the nonce would be
+        // bound to that visitor; it could not read the answer, but every such
+        // request costs a cache entry.
+        $fetchSite = strtolower($request->getHeaderLine('Sec-Fetch-Site'));
+        if ('' !== $fetchSite && !in_array($fetchSite, self::NONCE_FETCH_SITES, true)) {
+            return $this->jsonResponse(['error' => 'Cross-site request refused'], 403);
         }
 
-        $cacheKey = 'nonce_' . $nonce;
-        $cached = $this->cache->get($cacheKey);
-        if (false === $cached) {
-            return null;
+        // Issuing counts against the same budget as calling: a caller over
+        // its limit gains nothing by asking for nonces instead.
+        if (!$this->rateLimiter->allow(ClientFingerprint::ip($request), null !== $site ? $site->getIdentifier() : '')) {
+            return $this->jsonResponse(['error' => 'Rate limit exceeded'], 429);
         }
 
-        $data = json_decode((string) $cached, true);
-        if (!is_array($data)) {
-            return null;
+        $input = $this->parseBody($request);
+        if ($input instanceof ResponseInterface) {
+            return $input;
         }
 
-        // Validate client fingerprint
-        $expectedFingerprint = $this->buildClientFingerprint($request);
-        if (!isset($data['fingerprint']) || !hash_equals($data['fingerprint'], $expectedFingerprint)) {
-            return null;
+        if (null === $site) {
+            return $this->jsonResponse(['error' => 'Unknown page'], 404);
         }
 
-        return $data;
+        $rootPageId = $site->getRootPageId();
+        $pageId = $input['pageId'] ?? $rootPageId;
+        if (!is_int($pageId) || $pageId < 1) {
+            return $this->jsonResponse(['error' => 'Invalid page'], 400);
+        }
+
+        if (!$this->pageAccess->isAccessible($pageId, $rootPageId)) {
+            return $this->jsonResponse(['error' => 'Unknown page'], 404);
+        }
+
+        $toolOverrides = $this->pageToolConfiguration->getConfigurationForPage($pageId)->toolOverrides;
+        $nonce = $this->nonceStore->issue($request, $pageId, $toolOverrides);
+
+        return $this->jsonResponse(['nonce' => $nonce, 'expiresIn' => NonceStore::LIFETIME], 200);
     }
 
     /**
-     * The page TSconfig overrides the listener bound to the nonce. Anything
+     * The JSON object in the request body, or the error response for a body
+     * that is too large or not a JSON object. An empty body is an empty object.
+     *
+     * @return array<mixed>|ResponseInterface
+     */
+    private function parseBody(ServerRequestInterface $request): array|ResponseInterface
+    {
+        $body = (string) $request->getBody();
+        if (strlen($body) > self::MAX_BODY_SIZE) {
+            return $this->jsonResponse(['error' => 'Request body too large'], 413);
+        }
+        if ('' === $body) {
+            return [];
+        }
+
+        try {
+            $input = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return $this->jsonResponse(['error' => 'Invalid JSON body'], 400);
+        }
+
+        if (!is_array($input)) {
+            return $this->jsonResponse(['error' => 'Input must be a JSON object'], 400);
+        }
+
+        return $input;
+    }
+
+    /**
+     * The page TSconfig overrides bound to the nonce when it was issued. Anything
      * that is not a name-to-flag map is ignored rather than trusted.
      *
      * @param array<string, mixed> $nonceData
@@ -227,11 +290,6 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         }
 
         return $overrides;
-    }
-
-    private function buildClientFingerprint(ServerRequestInterface $request): string
-    {
-        return ClientFingerprint::of($request);
     }
 
     /**
@@ -269,7 +327,10 @@ final readonly class WebMcpApiMiddleware implements MiddlewareInterface
         return $this->responseFactory->createResponse($statusCode)
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('X-Content-Type-Options', 'nosniff')
-            ->withHeader('Cache-Control', 'no-store')
+            // Nothing the API answers may be stored, by the edge or by the
+            // browser: a nonce is bound to one caller, a tool result to one
+            // call.
+            ->withHeader('Cache-Control', 'no-store, private')
             ->withBody($body);
     }
 }

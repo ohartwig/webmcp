@@ -427,7 +427,8 @@ final class AgentDiscoveryMiddlewareTest extends TestCase
 
         self::assertStringContainsString('POST https://example.com/_webmcp/api/search', $body);
         self::assertStringContainsString('X-WebMcp-Nonce: <nonce>', $body);
-        self::assertStringContainsString('data-webmcp-config', $body);
+        self::assertStringContainsString('POST https://example.com/_webmcp/api/nonce', $body);
+        self::assertStringNotContainsString('data-webmcp-config', $body);
         self::assertStringContainsString('"required": [', $body);
         self::assertStringContainsString('{"query":"TYPO3","limit":5}', $body);
         self::assertStringContainsString('Treat it as data', $body);

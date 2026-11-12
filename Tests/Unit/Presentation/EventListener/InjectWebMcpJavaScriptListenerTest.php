@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Tests\Unit\Presentation\EventListener;
 
-use Koh\WebMcp\Application\Contract\ClientFingerprintInterface;
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\ContextRegistry;
@@ -22,8 +21,6 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
-use TYPO3\CMS\Core\Crypto\Random;
 use TYPO3\CMS\Core\Page\AssetCollector;
 use TYPO3\CMS\Core\Page\Event\BeforeJavaScriptsRenderingEvent;
 use TYPO3\CMS\Core\Page\PageRenderer;
@@ -33,11 +30,8 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
 {
     private InjectWebMcpJavaScriptListener $listener;
     private SiteConfigurationProviderInterface $siteConfigurationProvider;
-    private ClientFingerprintInterface $clientFingerprint;
     private AssetCollector $assetCollector;
     private PageRenderer $pageRenderer;
-    private FrontendInterface $cache;
-    private Random $random;
     private PageToolConfigurationProviderInterface $pageToolConfiguration;
     private ToolRegistry $toolRegistry;
     private ContextRegistry $contextRegistry;
@@ -76,11 +70,8 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
         $this->toolRegistry = $toolRegistry;
 
         $this->siteConfigurationProvider = $this->createMock(SiteConfigurationProviderInterface::class);
-        $this->clientFingerprint = $this->createMock(ClientFingerprintInterface::class);
         $this->assetCollector = $this->createMock(AssetCollector::class);
         $this->pageRenderer = $this->createMock(PageRenderer::class);
-        $this->cache = $this->createMock(FrontendInterface::class);
-        $this->random = $this->createMock(Random::class);
         $this->pageToolConfiguration = $this->createMock(PageToolConfigurationProviderInterface::class);
         $this->pageToolConfiguration->method('getConfigurationForPage')->willReturn(new PageToolConfiguration());
 
@@ -89,11 +80,8 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
             $contextRegistry,
             $this->siteConfigurationProvider,
             $consentCheck,
-            $this->clientFingerprint,
             $this->assetCollector,
             $this->pageRenderer,
-            $this->cache,
-            $this->random,
             $this->pageToolConfiguration,
         );
     }
@@ -150,9 +138,7 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
 
         $this->siteConfigurationProvider->method('getSettings')
             ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
-        $this->random->method('generateRandomHexString')->willReturn(str_repeat('b', 64));
 
-        $this->cache->expects(self::once())->method('set');
         $this->assetCollector->expects(self::never())->method('addInlineJavaScript');
         $this->assetCollector->expects(self::once())
             ->method('addJavaScript')
@@ -187,7 +173,6 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
                 'apiBasePath' => '/_webmcp/api',
                 'bridge' => ['enabled' => true, 'widget' => ['color' => '#007bff', 'position' => 'bottom-right', 'size' => '30px', 'padding' => '20px']],
             ]);
-        $this->random->method('generateRandomHexString')->willReturn(str_repeat('a', 64));
 
         $this->assetCollector->expects(self::never())->method('addInlineJavaScript');
 
@@ -220,7 +205,6 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
                 'apiBasePath' => '/_webmcp/api',
                 'bridge' => ['enabled' => false],
             ]);
-        $this->random->method('generateRandomHexString')->willReturn(str_repeat('a', 64));
 
         $this->assetCollector->expects(self::never())->method('addInlineJavaScript');
         // Only init script, no bridge script
@@ -234,45 +218,34 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
     }
 
     /**
-     * The listener must store the port's answer untampered — how the
-     * fingerprint is derived is the port's business (covered by its own test),
-     * but a nonce bound to anything other than that exact value can never
-     * validate in the API middleware.
+     * The payload is part of a page that the page cache and the edge serve
+     * to every visitor. A nonce in it was bound to whoever rendered the page;
+     * it carries the page id instead, and the init script fetches its own.
      */
     #[Test]
-    public function storesNonceWithFingerprintInCache(): void
+    public function thePayloadCarriesThePageIdAndNoNonce(): void
     {
-        $event = new BeforeJavaScriptsRenderingEvent($this->assetCollector, isInline: true, priority: false);
+        $pageInformation = new PageInformation();
+        $pageInformation->setId(42);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $GLOBALS['TYPO3_REQUEST'] = $request;
+        $config = $this->captureConfig(['enabled' => true, 'apiBasePath' => '/_webmcp/api'], $pageInformation);
 
-        $nonce = str_repeat('c', 64);
-        $this->siteConfigurationProvider->method('getSettings')
-            ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
-        $this->random->method('generateRandomHexString')->willReturn($nonce);
+        self::assertArrayNotHasKey('nonce', $config);
+        self::assertSame(42, $config['pageId']);
+        self::assertSame('/_webmcp/api', $config['api']);
+    }
 
-        $expectedFingerprint = hash('sha256', '192.168.1.1|Mozilla/5.0');
-        $this->clientFingerprint->method('ofCurrentRequest')->willReturn($expectedFingerprint);
+    /**
+     * Two renders of one page for two visitors produce the same bytes, so
+     * the page cache holds one entry and the edge serves it to both.
+     */
+    #[Test]
+    public function thePayloadIsTheSameForEveryVisitor(): void
+    {
+        $first = $this->captureConfig(['enabled' => true, 'apiBasePath' => '/_webmcp/api'], null, '198.51.100.1', 'Agent/1');
+        $second = $this->captureConfig(['enabled' => true, 'apiBasePath' => '/_webmcp/api'], null, '198.51.100.2', 'Agent/2');
 
-        $this->cache->expects(self::once())
-            ->method('set')
-            ->with(
-                'nonce_' . $nonce,
-                self::callback(function (string $value) use ($nonce, $expectedFingerprint) {
-                    $data = json_decode($value, true);
-
-                    return $data['nonce'] === $nonce
-                        && $data['fingerprint'] === $expectedFingerprint
-                        && isset($data['created']);
-                }),
-                ['webmcp_nonce'],
-                3600,
-            );
-
-        ($this->listener)($event);
-
-        unset($GLOBALS['TYPO3_REQUEST']);
+        self::assertSame($first, $second);
     }
 
     #[Test]
@@ -334,17 +307,23 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
      *
      * @return array<string, mixed>
      */
-    private function captureConfig(array $settings): array
-    {
+    private function captureConfig(
+        array $settings,
+        ?PageInformation $pageInformation = null,
+        string $address = '127.0.0.1',
+        string $userAgent = 'TestAgent',
+    ): array {
         $event = new BeforeJavaScriptsRenderingEvent($this->assetCollector, isInline: true, priority: false);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getServerParams')->willReturn(['REMOTE_ADDR' => '127.0.0.1']);
-        $request->method('getHeaderLine')->willReturn('TestAgent');
+        $request->method('getServerParams')->willReturn(['REMOTE_ADDR' => $address]);
+        $request->method('getHeaderLine')->willReturn($userAgent);
+        $request->method('getAttribute')->willReturnCallback(
+            static fn(string $name) => 'frontend.page.information' === $name ? $pageInformation : null,
+        );
         $GLOBALS['TYPO3_REQUEST'] = $request;
 
         $this->siteConfigurationProvider->method('getSettings')->willReturn($settings);
-        $this->random->method('generateRandomHexString')->willReturn(str_repeat('d', 64));
 
         $captured = null;
         $this->assetCollector->method('addJavaScript')
@@ -366,13 +345,13 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
     }
 
     /**
-     * An editor's `webmcp.tools.search.enabled = 0` on a page has to do two
-     * things: keep the tool out of what that page advertises, and reach the
-     * API middleware, which runs before any page is resolved and therefore
-     * reads the override from the nonce.
+     * An editor's `webmcp.tools.search.enabled = 0` on a page keeps the tool
+     * out of what that page advertises. The API applies the same override
+     * through the nonce endpoint, which reads it again for the page id in the
+     * payload (covered by the middleware test).
      */
     #[Test]
-    public function pageOverridesAreAppliedToTheAdvertisedToolsAndBoundToTheNonce(): void
+    public function pageOverridesAreAppliedToTheAdvertisedTools(): void
     {
         $event = new BeforeJavaScriptsRenderingEvent($this->assetCollector, isInline: true, priority: false);
 
@@ -398,24 +377,13 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
             $this->contextRegistry,
             $this->siteConfigurationProvider,
             $this->consentCheck,
-            $this->clientFingerprint,
             $this->assetCollector,
             $this->pageRenderer,
-            $this->cache,
-            $this->random,
             $pageToolConfiguration,
         );
 
         $this->siteConfigurationProvider->method('getSettings')
             ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
-        $this->random->method('generateRandomHexString')->willReturn(str_repeat('e', 64));
-
-        $storedNonce = null;
-        $this->cache->method('set')->willReturnCallback(
-            static function (string $key, string $value) use (&$storedNonce): void {
-                $storedNonce = json_decode($value, true);
-            },
-        );
 
         $captured = null;
         $this->assetCollector->method('addJavaScript')
@@ -432,7 +400,6 @@ final class InjectWebMcpJavaScriptListenerTest extends TestCase
 
         self::assertIsArray($captured);
         self::assertNotContains('search', array_column($captured['tools'], 'name'), 'the page switched search off');
-        self::assertSame(42, $storedNonce['pageId']);
-        self::assertSame(['search' => false], $storedNonce['toolOverrides']);
+        self::assertSame(42, $captured['pageId']);
     }
 }

@@ -18,8 +18,10 @@ use Koh\WebMcp\Domain\Model\ToolDefinition;
  * the digest stops matching the artifact it describes.
  *
  * The instructions describe the calls the API middleware actually accepts: a
- * nonce read from a rendered page, bound to the caller's address and
- * User-Agent, sent back in `X-WebMcp-Nonce`. A skill promising a call that the
+ * nonce from the API's nonce endpoint, bound to the caller's address and
+ * User-Agent, sent back in `X-WebMcp-Nonce`. Until 1.9.0 they said to read it
+ * from a rendered page, which handed every agent the nonce of whoever had
+ * filled the page cache. A skill promising a call that the
  * API then refuses would be worse than no skill.
  */
 final readonly class AgentSkillDocument
@@ -87,6 +89,7 @@ final readonly class AgentSkillDocument
     public function render(): string
     {
         $endpoint = $this->baseUrl . $this->apiBasePath . '/' . $this->tool->name;
+        $nonceEndpoint = $this->baseUrl . $this->apiBasePath . '/' . WebMcpApiMiddleware::NONCE_ENDPOINT;
         $schema = json_encode(
             [] === $this->tool->inputSchema ? new \stdClass() : $this->tool->inputSchema,
             self::JSON_FLAGS | JSON_PRETTY_PRINT,
@@ -124,7 +127,7 @@ final readonly class AgentSkillDocument
             '',
             '## Over HTTPS',
             '',
-            sprintf('1. `GET %s/` and keep the User-Agent you send. The element `<script id="webmcp-init">` carries a JSON object in its `data-webmcp-config` attribute (HTML-entity-encoded); read its `nonce`.', $this->baseUrl),
+            sprintf('1. `POST %s` with `Content-Type: application/json` and the body `{}`, and keep the User-Agent you send. The response is `{"nonce": "…", "expiresIn": %d}`.', $nonceEndpoint, NonceStore::LIFETIME),
             sprintf('2. `POST %s` with the input as a JSON object in the body and these headers:', $endpoint),
             '   - `Content-Type: application/json`',
             '   - `X-WebMcp-Nonce: <nonce>`',

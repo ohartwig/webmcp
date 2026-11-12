@@ -37,7 +37,7 @@ final class AgentSkillDocumentTest extends TestCase
 
             ## Over HTTPS
 
-            1. `GET https://example.com/` and keep the User-Agent you send. The element `<script id="webmcp-init">` carries a JSON object in its `data-webmcp-config` attribute (HTML-entity-encoded); read its `nonce`.
+            1. `POST https://example.com/_webmcp/api/nonce` with `Content-Type: application/json` and the body `{}`, and keep the User-Agent you send. The response is `{"nonce": "…", "expiresIn": 3600}`.
             2. `POST https://example.com/_webmcp/api/search` with the input as a JSON object in the body and these headers:
                - `Content-Type: application/json`
                - `X-WebMcp-Nonce: <nonce>`
