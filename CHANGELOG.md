@@ -3,6 +3,16 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.8.3](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.2...v1.8.3) (2026-11-12)
+
+### :repeat: Chores
+
+* **security:** record VEX not_affected for minimatch CVE-2026-118764 ([a7975f6](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/a7975f6c69620644e666e95a0868a80a597b806c))
+* **repo-templates:** sync ([fe5aea4](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/fe5aea4de903506049343f1d130eb8c470e9c396))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.173-8.5 ([09ba8a7](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/09ba8a7928601f9628c3eaa69e6df73d5a5e8d85))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.172-8.5 ([1264c26](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/1264c26151d12fc514e37957ee589f65eed53d5c))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.171-8.5 ([a4799c8](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/a4799c8d7d24b79b589d80d24e51f02399c32d38))
+
 ## [1.8.2](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.1...v1.8.2) (2026-11-08)
 
 ### :repeat: Chores
