@@ -1,0 +1,31 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/-/blob/main/.vex.json",
+  "author": "KOH Coding Agent <coding-agent@ole-hartwig.eu>",
+  "timestamp": "2026-11-12T12:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-118764",
+        "aliases": [
+          "GHSA-g3hv-75wg-m249"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:npm/minimatch@10.2.6"
+        }
+      ],
+      "koh_match": {
+        "pkg_name": "minimatch",
+        "installed_version": "10.2.6"
+      },
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "minimatch 10.2.6 is locked in package-lock.json only as a development dependency (every entry and every package that requires it is marked dev: true). It is required by @eslint/config-array (^10.2.4), eslint (^10.2.6) - the lint and test toolchain. It runs only when a developer or CI lints or tests this repository's own sources, with glob patterns from the repository's own configuration; no pattern comes from a user or a request, so the globparts amplification (GHSA-g3hv-75wg-m249) has no attacker-controlled input. It is not part of what this repository ships: production installs omit devDependencies (npm ci --omit=dev where an image is built), and no published artefact carries the dev toolchain. The fix exists only in minimatch 11.0.1, and no released version of what requires it admits 11 (checked 2026-11-12: eslint 10.14.0 ^10.2.6, @eslint/config-array 0.23.5 ^10.2.4, @typescript-eslint/typescript-estree 8.72.2 ^10.2.2, mocha 12.0.3 ^10.2.2, test-exclude 8.0.0 ^10.2.2), so the lock cannot take it (pinup blocker: constraint). Re-decide when these admit minimatch 11, or at once if minimatch enters a runtime (non-dev) path of this lock.",
+      "koh_review_by": "2026-12-12",
+      "timestamp": "2026-11-12T12:00:00Z"
+    }
+  ]
+}
