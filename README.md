@@ -128,11 +128,41 @@ All tools respect TYPO3 access restrictions (`fe_group`, `starttime`, `endtime`,
 
 Calls are rate-limited per client address (60 per minute, IPv6 addresses by their /64) and per site (600 per minute), counted atomically in `tx_webmcp_rate_limit`. The User-Agent is not part of the key — it is whatever the caller says it is.
 
+### Nonces
+
+Every tool call carries `X-WebMcp-Nonce`. The nonce does not come from the page: the
+page is held by the TYPO3 page cache and by any edge cache in front of it and served to
+every visitor, so a secret in it would belong to whoever rendered it. The page's
+configuration carries the page id instead, and the init script asks for a nonce before
+its first call:
+
+```http
+POST /_webmcp/api/nonce
+Content-Type: application/json
+
+{"pageId": 42}
+```
+
+```json
+{"nonce": "<64 hex characters>", "expiresIn": 3600}
+```
+
+The nonce is bound to the caller's address and User-Agent and to the page: the page must
+belong to the site and be readable by the caller, and its TSconfig tool overrides are read
+on the server, never taken from the request. Without a `pageId` the site's root page
+applies. The script keeps the nonce in memory and, on a `403`, fetches a fresh one and
+retries once.
+
+The endpoint answers `Cache-Control: no-store, private`, accepts only `POST` (no cache
+stores a POST), counts against the same rate limit as the tool calls, and refuses a
+browser request whose `Sec-Fetch-Site` is neither `same-origin` nor `none`. `nonce` is
+therefore a reserved name: a tool of that name could not be called.
+
 ### What is advertised is what runs
 
 The API executes only what the site advertises. `webmcp.tools.<name>.enabled`, the
 provider key (`webmcp.tools.form.enabled` for every `form-*` tool), and the page TSconfig
-override of the page the nonce was minted on are applied by the middleware before any
+override of the page the nonce was issued for are applied by the middleware before any
 handler runs; a tool switched off anywhere answers `404` at `/_webmcp/api/<name>`. A
 handler with no provider advertising it is not reachable at all. The backend module lists
 every registered tool provider, including those other extensions bring, so a provider a
@@ -158,7 +188,7 @@ The `AgentDiscoveryMiddleware` serves, for every site:
 | Path | Format |
 |------|--------|
 | `/.well-known/agent-skills/index.json` | [Agent Skills Discovery](https://github.com/cloudflare/agent-skills-discovery-rfc) v0.2.0 index: one `skill-md` entry per tool whose name is a valid skill name, each with the SHA-256 digest of its artifact. Empty while `webmcp.enabled` is off, because the API then refuses every call. |
-| `/.well-known/agent-skills/<name>/SKILL.md` | The skill artifact: frontmatter plus instructions for calling the tool in a WebMCP browser or over HTTPS (nonce from a rendered page, `X-WebMcp-Nonce`, input schema). |
+| `/.well-known/agent-skills/<name>/SKILL.md` | The skill artifact: frontmatter plus instructions for calling the tool in a WebMCP browser or over HTTPS (nonce from `/_webmcp/api/nonce`, `X-WebMcp-Nonce`, input schema). |
 | `/.well-known/ard.json` (also `/.well-known/ai-catalog.json`) | [ARD](https://github.com/ards-project/ard-spec) v0.91 manifest. |
 | `/.well-known/mcp/server-card.json`, `/.well-known/api-catalog` | MCP server card and RFC 9727 API catalogue. |
 
@@ -260,9 +290,10 @@ Both classes are automatically discovered via `_instanceof` tags in `Services.ya
 
 1. When a page is rendered, the extension injects JavaScript via `AssetCollector`
 2. The JavaScript registers all enabled tools via `document.modelContext.registerTool(tool, { signal })`
-3. When an AI agent calls a tool, the browser sends a `POST` request to `/_webmcp/api/{toolName}`
-4. The PSR-15 middleware validates the request (CSRF nonce, input) and delegates to the appropriate ToolHandler
-5. The result is returned as JSON
+3. Before the first call, the script fetches a nonce from `POST /_webmcp/api/nonce` (see [Nonces](#nonces))
+4. When an AI agent calls a tool, the browser sends a `POST` request to `/_webmcp/api/{toolName}`
+5. The PSR-15 middleware validates the request (CSRF nonce, input) and delegates to the appropriate ToolHandler
+6. The result is returned as JSON
 
 ## Requirements
 

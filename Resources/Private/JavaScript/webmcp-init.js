@@ -14,7 +14,9 @@
   try { cfg = JSON.parse(raw); } catch { return; }
 
   var api = cfg.api || '';
-  var nonce = cfg.nonce || '';
+  // A page cached before 1.9.0 still carries a `nonce` in its payload. It is
+  // ignored: it was minted for whoever rendered the page, not for this visitor.
+  var pageId = typeof cfg.pageId === 'number' && cfg.pageId > 0 ? cfg.pageId : 0;
   var tools = cfg.tools || [];
   var contexts = cfg.contexts || [];
   var consent = cfg.consent || {};
@@ -34,8 +36,35 @@
     }
   }
 
-  function exec(name, input) {
-    var headers = { 'Content-Type': 'application/json', 'X-WebMcp-Nonce': nonce };
+  // The nonce is fetched for this visitor before the first tool call, never
+  // read from the page: the page is cached and shared, the nonce is bound to
+  // one visitor's address and browser. One request is in flight at a time;
+  // a failed one is forgotten so the next call tries again.
+  var noncePromise = null;
+
+  function nonce() {
+    if (!noncePromise) {
+      var body = pageId > 0 ? { pageId: pageId } : {};
+      noncePromise = fetch(api + '/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        cache: 'no-store',
+        body: JSON.stringify(body)
+      }).then(function (r) {
+        if (!r.ok) throw new Error('nonce: ' + r.status);
+        return r.json();
+      }).then(function (d) {
+        if (!d || typeof d.nonce !== 'string' || d.nonce === '') throw new Error('nonce: malformed response');
+        return d.nonce;
+      });
+      noncePromise.catch(function () { noncePromise = null; });
+    }
+    return noncePromise;
+  }
+
+  function call(name, input, value) {
+    var headers = { 'Content-Type': 'application/json', 'X-WebMcp-Nonce': value };
     // A consent-gated tool is only ever run after allowed() passed; the
     // server refuses the call unless the granted category is stated, so a
     // caller that skips this script cannot skip the gate either.
@@ -44,7 +73,23 @@
     return fetch(api + '/' + encodeURIComponent(name), {
       method: 'POST',
       headers: headers,
+      credentials: 'same-origin',
       body: JSON.stringify(input)
+    });
+  }
+
+  function exec(name, input) {
+    var used = nonce();
+    return used.then(function (value) {
+      return call(name, input, value).then(function (r) {
+        // A 403 is most often an expired nonce (it lives an hour) or one the
+        // visitor's address no longer matches. Fetch a fresh one and retry,
+        // once; a second 403 is the answer. Concurrent calls that failed on
+        // the same nonce share one refresh.
+        if (r.status !== 403) return r;
+        if (noncePromise === used) noncePromise = null;
+        return nonce().then(function (fresh) { return call(name, input, fresh); });
+      });
     }).then(function (r) {
       if (!r.ok) throw new Error(name + ': ' + r.status);
       return r.json();

@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Presentation\EventListener;
 
-use Koh\WebMcp\Application\Contract\ClientFingerprintInterface;
 use Koh\WebMcp\Application\Contract\ConsentCheckInterface;
 use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Service\ContextRegistry;
 use Koh\WebMcp\Application\Service\ToolRegistry;
 use TYPO3\CMS\Core\Attribute\AsEventListener;
-use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
-use TYPO3\CMS\Core\Crypto\Random;
 use TYPO3\CMS\Core\Page\AssetCollector;
 use TYPO3\CMS\Core\Page\Event\BeforeJavaScriptsRenderingEvent;
 use TYPO3\CMS\Core\Page\PageRenderer;
@@ -27,11 +24,8 @@ final readonly class InjectWebMcpJavaScriptListener
         private ContextRegistry $contextRegistry,
         private SiteConfigurationProviderInterface $siteConfigurationProvider,
         private ConsentCheckInterface $consentCheck,
-        private ClientFingerprintInterface $clientFingerprint,
         private AssetCollector $assetCollector,
         private PageRenderer $pageRenderer,
-        private FrontendInterface $cache,
-        private Random $random,
         private PageToolConfigurationProviderInterface $pageToolConfiguration,
     ) {}
 
@@ -54,8 +48,9 @@ final readonly class InjectWebMcpJavaScriptListener
             return;
         }
 
-        // The page's own TSconfig overrides apply to what is advertised here,
-        // and travel with the nonce so the API applies them to what runs.
+        // The page's own TSconfig overrides apply to what is advertised here.
+        // The page id goes into the payload so the nonce endpoint can read
+        // the same overrides again and bind them to the nonce it issues.
         $pageInformation = $request->getAttribute('frontend.page.information');
         $pageId = $pageInformation instanceof PageInformation ? $pageInformation->getId() : 0;
         $pageConfig = $pageId > 0 ? $this->pageToolConfiguration->getConfigurationForPage($pageId) : null;
@@ -68,22 +63,13 @@ final readonly class InjectWebMcpJavaScriptListener
         }
 
         $apiBasePath = $settings['apiBasePath'] ?? '/_webmcp/api';
-        $nonce = $this->random->generateRandomHexString(32);
 
-        // Must match what the API middleware computes, or no nonce validates.
-        $fingerprint = $this->clientFingerprint->ofCurrentRequest();
-
-        // Store nonce with fingerprint in cache (TTL: 1 hour). The page and
-        // its tool overrides are bound to it: the API middleware runs before
-        // page resolution and has no other way to know which page's rules
-        // apply to the call.
-        $this->cache->set('nonce_' . $nonce, json_encode([
-            'nonce' => $nonce,
-            'fingerprint' => $fingerprint,
-            'created' => time(),
-            'pageId' => $pageId,
-            'toolOverrides' => null !== $pageConfig ? $pageConfig->toolOverrides : [],
-        ]), ['webmcp_nonce'], 3600);
+        // No nonce in here. This payload is part of the page, and the page is
+        // held by the page cache and the edge and served to every visitor for
+        // hours: a nonce bound to one visitor's fingerprint would work for
+        // whoever filled the cache and for nobody else. The init script asks
+        // the API's nonce endpoint for its own, and the payload stays the
+        // same for every visitor and every render.
 
         // Build consent requirements for tools that need consent
         $consentRequirements = [];
@@ -100,7 +86,7 @@ final readonly class InjectWebMcpJavaScriptListener
         // Build JSON config — no inline JavaScript, CSP-safe
         $config = [
             'api' => $apiBasePath,
-            'nonce' => $nonce,
+            'pageId' => $pageId,
             'tools' => array_map(static fn($t) => $t->toArray(), $tools),
             'contexts' => array_map(static fn($c) => $c->toArray(), $contexts),
             'consent' => [

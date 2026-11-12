@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Koh\WebMcp\Infrastructure\Http;
 
-use Koh\WebMcp\Application\Contract\ClientFingerprintInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -26,24 +25,14 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  * be worse than the constant — a caller could then choose its own identity and
  * step around both the binding and the rate limit.
  *
- * The static methods are the shared recipe, used directly within this layer.
- * The instance side backs the Application port so that other layers can obtain
- * the fingerprint without knowing how it is derived; it delegates into the
- * same recipe, which is what keeps nonce issuing and nonce validation
- * computing the identical value.
+ * Nonce issuing and nonce validation both go through `NonceStore`, which
+ * calls `of()` on both sides; that is what keeps them computing the identical
+ * value. Until 1.9.0 the page listener issued nonces through an Application
+ * port onto this class; nonces no longer come from the page, and the port
+ * went with it.
  */
-final class ClientFingerprint implements ClientFingerprintInterface
+final class ClientFingerprint
 {
-    public function ofCurrentRequest(): string
-    {
-        $request = $GLOBALS['TYPO3_REQUEST'] ?? null;
-        if (!$request instanceof ServerRequestInterface) {
-            throw new \RuntimeException('No request is being served, refusing to fingerprint a client that does not exist');
-        }
-
-        return self::of($request);
-    }
-
     public static function ip(ServerRequestInterface $request): string
     {
         // getIndpEnv() is declared as returning anything the environment might

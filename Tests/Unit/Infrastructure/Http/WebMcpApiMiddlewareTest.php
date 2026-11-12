@@ -8,6 +8,8 @@ use Koh\WebMcp\Application\Contract\ErrorLoggerInterface;
 use Koh\WebMcp\Application\Contract\EventDispatcherInterface;
 use Koh\WebMcp\Application\Contract\SiteConfigurationProviderInterface;
 use Koh\WebMcp\Application\Contract\LogRetentionInterface;
+use Koh\WebMcp\Application\Contract\PageAccessInterface;
+use Koh\WebMcp\Application\Contract\PageToolConfigurationProviderInterface;
 use Koh\WebMcp\Application\Contract\RateLimiterInterface;
 use Koh\WebMcp\Application\Contract\ToolHandlerInterface;
 use Koh\WebMcp\Application\Service\ConsentService;
@@ -17,9 +19,12 @@ use Koh\WebMcp\Application\Service\ToolInvocationLogger;
 use Koh\WebMcp\Application\Service\ToolRegistry;
 use Koh\WebMcp\Domain\Contract\ToolInvocationLogRepositoryInterface;
 use Koh\WebMcp\Domain\Contract\ToolProviderInterface;
+use Koh\WebMcp\Domain\Model\PageToolConfiguration;
 use Koh\WebMcp\Domain\Model\ToolDefinition;
 use Koh\WebMcp\Domain\Model\ToolResult;
+use Koh\WebMcp\Infrastructure\Http\NonceStore;
 use Koh\WebMcp\Infrastructure\Http\WebMcpApiMiddleware;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -31,6 +36,10 @@ use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
+use TYPO3\CMS\Core\Crypto\Random;
+use TYPO3\CMS\Core\Http\ResponseFactory;
+use TYPO3\CMS\Core\Http\StreamFactory;
+use TYPO3\CMS\Core\Site\Entity\Site;
 
 final class WebMcpApiMiddlewareTest extends TestCase
 {
@@ -43,6 +52,8 @@ final class WebMcpApiMiddlewareTest extends TestCase
     private ToolHandlerInterface&MockObject $rogueHandler;
     private ToolHandlerInterface&MockObject $shopHandler;
     private RateLimiterInterface&MockObject $rateLimiter;
+    private PageAccessInterface&MockObject $pageAccess;
+    private PageToolConfigurationProviderInterface&MockObject $pageToolConfiguration;
     private ToolRegistry $toolRegistry;
 
     protected function setUp(): void
@@ -102,11 +113,14 @@ final class WebMcpApiMiddlewareTest extends TestCase
         $this->rateLimiter = $this->createMock(RateLimiterInterface::class);
         $this->rateLimiter->method('allow')->willReturn(true);
 
+        $this->pageAccess = $this->createMock(PageAccessInterface::class);
+        $this->pageToolConfiguration = $this->createMock(PageToolConfigurationProviderInterface::class);
+
         $this->middleware = new WebMcpApiMiddleware(
             $toolExecutionService,
             $this->siteConfigurationProvider,
             $invocationLogger,
-            $this->cache,
+            new NonceStore($this->cache, new Random()),
             $this->responseFactory,
             $this->streamFactory,
             $this->toolRegistry,
@@ -114,6 +128,8 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->rateLimiter,
             new InputSchemaValidator(),
             $this->createMock(LogRetentionInterface::class),
+            $this->pageAccess,
+            $this->pageToolConfiguration,
         );
     }
 
@@ -142,7 +158,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->toolExecutionService(),
             $this->siteConfigurationProvider,
             new ToolInvocationLogger($this->createMock(ToolInvocationLogRepositoryInterface::class), $this->createMock(ErrorLoggerInterface::class)),
-            $this->cache,
+            new NonceStore($this->cache, new Random()),
             $this->responseFactory,
             $this->streamFactory,
             $this->toolRegistry,
@@ -150,6 +166,8 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $rateLimiter,
             new InputSchemaValidator(),
             $this->createMock(LogRetentionInterface::class),
+            $this->pageAccess,
+            $this->pageToolConfiguration,
         );
 
         $this->cache->method('get')->willReturnCallback(
@@ -641,7 +659,7 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $this->toolExecutionService(),
             $this->siteConfigurationProvider,
             new ToolInvocationLogger($this->createMock(ToolInvocationLogRepositoryInterface::class), $this->createMock(ErrorLoggerInterface::class)),
-            $this->cache,
+            new NonceStore($this->cache, new Random()),
             $this->responseFactory,
             $this->streamFactory,
             $this->toolRegistry,
@@ -649,6 +667,8 @@ final class WebMcpApiMiddlewareTest extends TestCase
             $rateLimiter,
             new InputSchemaValidator(),
             $this->createMock(LogRetentionInterface::class),
+            $this->pageAccess,
+            $this->pageToolConfiguration,
         );
         $this->searchHandler->expects(self::never())->method('execute');
 
@@ -732,5 +752,291 @@ final class WebMcpApiMiddlewareTest extends TestCase
         self::assertStringContainsString('Invalid input', $written);
         self::assertStringContainsString('input.limit: must be of type integer', $written);
         self::assertStringNotContainsString('canary', $written);
+    }
+
+    /**
+     * The round trip a cached page depends on: the init script asks the
+     * nonce endpoint, and the API accepts what it was given. In 1.8.3 the
+     * page minted 32 characters and the API demanded 64, so this never held.
+     */
+    #[Test]
+    public function aNonceFromTheNonceEndpointIsAcceptedByTheApi(): void
+    {
+        $this->pageAccess->method('isAccessible')->willReturn(true);
+        $this->pageToolConfiguration->method('getConfigurationForPage')->willReturn(new PageToolConfiguration());
+        $middleware = $this->nonceMiddleware();
+
+        $issued = $middleware->process(
+            $this->createNonceRequest('{"pageId":7}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(200, $issued->getStatusCode());
+        self::assertSame('no-store, private', $issued->getHeaderLine('Cache-Control'));
+        $payload = json_decode((string) $issued->getBody(), true, 8, JSON_THROW_ON_ERROR);
+        self::assertIsArray($payload);
+        self::assertIsString($payload['nonce']);
+        self::assertSame(NonceStore::LENGTH, strlen($payload['nonce']));
+        self::assertSame(NonceStore::LIFETIME, $payload['expiresIn']);
+
+        $called = $middleware->process(
+            $this->createRequest('/_webmcp/api/search', 'POST', $payload['nonce'], '{"query":"x"}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(200, $called->getStatusCode());
+    }
+
+    /**
+     * The page's tool overrides are read on the server for the page id; a
+     * body that brings its own overrides changes nothing.
+     */
+    #[Test]
+    public function theNonceEndpointBindsTheOverridesOfThePageNotThoseOfTheRequest(): void
+    {
+        $this->pageAccess->method('isAccessible')->willReturn(true);
+        $this->pageToolConfiguration->expects(self::once())->method('getConfigurationForPage')
+            ->with(7)
+            ->willReturn(new PageToolConfiguration(['search' => false]));
+        $this->searchHandler->expects(self::never())->method('execute');
+        $middleware = $this->nonceMiddleware();
+
+        $issued = $middleware->process(
+            $this->createNonceRequest('{"pageId":7,"toolOverrides":{"search":true}}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+        $nonce = json_decode((string) $issued->getBody(), true, 8, JSON_THROW_ON_ERROR)['nonce'];
+
+        $called = $middleware->process(
+            $this->createRequest('/_webmcp/api/search', 'POST', $nonce, '{"query":"x"}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(404, $called->getStatusCode());
+    }
+
+    /**
+     * What 1.8.3 embedded in every page — 32 hex characters — is refused
+     * even when the cache holds an entry for it.
+     */
+    #[Test]
+    public function aThirtyTwoCharacterNonceIsRefusedByTheApi(): void
+    {
+        $short = str_repeat('a', 32);
+        $cache = $this->createMock(FrontendInterface::class);
+        $cache->expects(self::never())->method('get');
+        $this->searchHandler->expects(self::never())->method('execute');
+
+        $response = $this->nonceMiddleware($cache)->process(
+            $this->createRequest('/_webmcp/api/search', 'POST', $short, '{"query":"x"}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(403, $response->getStatusCode());
+    }
+
+    /**
+     * A page cached before 1.9.0 has no page id in its payload. Its script
+     * is the new one, and it asks without one: the root page stands in.
+     */
+    #[Test]
+    public function aNonceRequestWithoutAPageIdIsIssuedForTheRootPage(): void
+    {
+        $this->pageAccess->expects(self::once())->method('isAccessible')->with(1, 1)->willReturn(true);
+        $this->pageToolConfiguration->expects(self::once())->method('getConfigurationForPage')->with(1)->willReturn(new PageToolConfiguration());
+
+        $response = $this->nonceMiddleware()->process(
+            $this->createNonceRequest(''),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function aNonceIsNotIssuedForAPageTheCallerMayNotRead(): void
+    {
+        $cache = $this->createMock(FrontendInterface::class);
+        $cache->expects(self::never())->method('set');
+        $this->pageAccess->expects(self::once())->method('isAccessible')->with(99, 1)->willReturn(false);
+
+        $response = $this->nonceMiddleware($cache)->process(
+            $this->createNonceRequest('{"pageId":99}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(404, $response->getStatusCode());
+        self::assertStringNotContainsString('99', (string) $response->getBody());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidPageIds(): iterable
+    {
+        yield 'zero' => ['{"pageId":0}'];
+        yield 'negative' => ['{"pageId":-3}'];
+        yield 'string' => ['{"pageId":"7"}'];
+        yield 'float' => ['{"pageId":7.5}'];
+    }
+
+    #[Test]
+    #[DataProvider('invalidPageIds')]
+    public function aNonceRequestWithAnInvalidPageIdIsRefused(string $body): void
+    {
+        $this->pageAccess->expects(self::never())->method('isAccessible');
+
+        $response = $this->nonceMiddleware()->process(
+            $this->createNonceRequest($body),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(400, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function aCrossSiteNonceRequestIsRefused(): void
+    {
+        $rateLimiter = $this->createMock(RateLimiterInterface::class);
+        $rateLimiter->expects(self::never())->method('allow');
+        $this->pageAccess->expects(self::never())->method('isAccessible');
+
+        $response = $this->nonceMiddleware(rateLimiter: $rateLimiter)->process(
+            $this->createNonceRequest('{"pageId":7}', fetchSite: 'cross-site'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(403, $response->getStatusCode());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function acceptedFetchSites(): iterable
+    {
+        yield 'the init script' => ['same-origin'];
+        yield 'typed by the user' => ['none'];
+        yield 'not a browser' => [''];
+    }
+
+    #[Test]
+    #[DataProvider('acceptedFetchSites')]
+    public function aSameOriginOrNonBrowserNonceRequestIsServed(string $fetchSite): void
+    {
+        $this->pageAccess->method('isAccessible')->willReturn(true);
+        $this->pageToolConfiguration->method('getConfigurationForPage')->willReturn(new PageToolConfiguration());
+
+        $response = $this->nonceMiddleware()->process(
+            $this->createNonceRequest('{"pageId":7}', fetchSite: $fetchSite),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function theNonceEndpointIsRateLimitedLikeTheTools(): void
+    {
+        $cache = $this->createMock(FrontendInterface::class);
+        $cache->expects(self::never())->method('set');
+        $rateLimiter = $this->createMock(RateLimiterInterface::class);
+        $rateLimiter->expects(self::once())->method('allow')->with('127.0.0.1', 'demo')->willReturn(false);
+
+        $response = $this->nonceMiddleware($cache, $rateLimiter)->process(
+            $this->createNonceRequest('{"pageId":7}'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(429, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function theNonceEndpointRefusesGet(): void
+    {
+        $response = $this->nonceMiddleware()->process(
+            $this->createNonceRequest('', method: 'GET'),
+            $this->createMock(RequestHandlerInterface::class),
+        );
+
+        self::assertSame(405, $response->getStatusCode());
+        self::assertSame('no-store, private', $response->getHeaderLine('Cache-Control'));
+    }
+
+    /**
+     * A middleware with real PSR-7 factories and an in-memory nonce cache, so
+     * a nonce issued by one request can be redeemed by the next.
+     */
+    private function nonceMiddleware(?FrontendInterface $cache = null, ?RateLimiterInterface $rateLimiter = null): WebMcpApiMiddleware
+    {
+        if (null === $cache) {
+            $entries = [];
+            $cache = $this->createMock(FrontendInterface::class);
+            $cache->method('set')->willReturnCallback(
+                static function (string $key, string $value) use (&$entries): void {
+                    $entries[$key] = $value;
+                },
+            );
+            $cache->method('get')->willReturnCallback(
+                static function (string $key) use (&$entries) {
+                    return $entries[$key] ?? false;
+                },
+            );
+        }
+        if (null === $rateLimiter) {
+            $rateLimiter = $this->createMock(RateLimiterInterface::class);
+            $rateLimiter->method('allow')->willReturn(true);
+        }
+        $this->siteConfigurationProvider->method('getSettings')
+            ->willReturn(['enabled' => true, 'apiBasePath' => '/_webmcp/api']);
+
+        return new WebMcpApiMiddleware(
+            $this->toolExecutionService(),
+            $this->siteConfigurationProvider,
+            new ToolInvocationLogger($this->createMock(ToolInvocationLogRepositoryInterface::class), $this->createMock(ErrorLoggerInterface::class)),
+            new NonceStore($cache, new Random()),
+            new ResponseFactory(),
+            new StreamFactory(),
+            $this->toolRegistry,
+            new ConsentService(),
+            $rateLimiter,
+            new InputSchemaValidator(),
+            $this->createMock(LogRetentionInterface::class),
+            $this->pageAccess,
+            $this->pageToolConfiguration,
+        );
+    }
+
+    /**
+     * A request to the nonce endpoint of the site `demo` (root page 1), from
+     * the same client createRequest() uses by default.
+     */
+    private function createNonceRequest(string $body, string $fetchSite = 'same-origin', string $method = 'POST'): ServerRequestInterface
+    {
+        $uri = $this->createMock(UriInterface::class);
+        $uri->method('getPath')->willReturn('/_webmcp/api/nonce');
+
+        $stream = $this->createMock(StreamInterface::class);
+        $stream->method('__toString')->willReturn($body);
+
+        $site = new Site('demo', 1, ['base' => 'https://example.org/', 'languages' => []]);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getUri')->willReturn($uri);
+        $request->method('getMethod')->willReturn($method);
+        $request->method('getHeaderLine')->willReturnCallback(
+            static fn(string $name) => match ($name) {
+                'User-Agent' => 'TestAgent/1.0',
+                'Sec-Fetch-Site' => $fetchSite,
+                'Content-Type' => 'application/json',
+                default => '',
+            }
+        );
+        $request->method('getBody')->willReturn($stream);
+        $request->method('getServerParams')->willReturn(['REMOTE_ADDR' => '127.0.0.1']);
+        $request->method('getAttribute')->willReturnCallback(
+            static fn(string $name) => 'site' === $name ? $site : null,
+        );
+
+        return $request;
     }
 }
