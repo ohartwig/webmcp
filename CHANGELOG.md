@@ -3,6 +3,12 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.9.0](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.3...v1.9.0) (2026-11-12)
+
+### :sparkles: Features
+
+* **api:** issue nonces from an uncached endpoint instead of the page ([eb47087](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/eb470876d39887ea5cf240b2339c1bcd1456e2cb))
+
 ## [1.8.3](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.8.2...v1.8.3) (2026-11-12)
 
 ### :repeat: Chores
