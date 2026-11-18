@@ -3,6 +3,13 @@
 This package continues `moselwal/webmcp` (last release 1.5.8) as
 `koh/webmcp` with a fresh history. Releases from 1.6.0 on are listed here.
 
+## [1.9.2](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.9.1...v1.9.2) (2026-11-18)
+
+### :repeat: Chores
+
+* **deps:** refresh lock file (transitive deps, e.g. guzzle) ([d2fde07](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/d2fde078916835179b2a21d4424c94f82c1346cb))
+* **deps:** update dependency registry.ole-hartwig.eu/devops/images/franken-php/ci to v3.2.246-8.5 ([ec76c11](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/commit/ec76c1145093fd56e1bad939d55b3d055fb3c131))
+
 ## [1.9.1](https://git.ole-hartwig.eu/ai-ready-platform/platform/webmcp/compare/v1.9.0...v1.9.1) (2026-11-15)
 
 ### :repeat: Chores
